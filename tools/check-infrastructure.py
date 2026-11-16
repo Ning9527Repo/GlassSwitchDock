@@ -73,7 +73,7 @@ def tests():
     rejects(lambda: macho(fixture(ordinal=0xfe), 'arm64e')); passed.append('dynamic lookup imports rejected')
     rejects(lambda: macho(fixture(symbol='_MSHookMessageEx'), 'arm64e')); passed.append('direct MSHookMessageEx imports rejected')
     workflow = (ROOT/'.github/workflows/build.yml').read_text()
-    assert 'workflow_dispatch:' in workflow and 'runs-on: macos-latest' in workflow
+    assert 'workflow_dispatch:' in workflow and any('runs-on: '+label in workflow for label in ('macos-latest', 'macos-26-intel'))
     assert not any(x in workflow for x in ('  push:', '  pull_request:', '  schedule:'))
     assert 'if: ${{ always() }}' in workflow and 'dist/*.deb' in workflow and 'evidence/**' in workflow
     passed += ['manual-only macOS workflow', 'failure evidence upload configured']

@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   native:
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     timeout-minutes: 60
     env:
       SOURCE_DATE_EPOCH: '0'

@@ -89,7 +89,7 @@ void NGRunDockTests(NGRecorder *r, UIView *root) {
                     [NSStringFromClass(view.class) containsString:@"Slider"]) noContent = NO;
             [r check:noContent && !material.userInteractionEnabled && !material.isAccessibilityElement
                    name:NGDockID(cls,style,@"material_has_no_labels_sliders_or_touch_interception")
-               evidence:@{@"subviewClasses": [NGDescendants(material) valueForKey:@"class"].description,
+               evidence:@{@"subviewClasses": [[NGDescendants(material) valueForKey:@"class"] description],
                           @"interactive": @(material.userInteractionEnabled), @"accessibility": @(material.isAccessibilityElement)}];
             UIView *hit = [dock hitTest:[dock.icon convertPoint:CGPointMake(26,26) toView:dock] withEvent:nil];
             [r check:hit == dock.icon || [hit isDescendantOfView:dock.icon] name:NGDockID(cls,style,@"dock_icon_hit_test_preserved")

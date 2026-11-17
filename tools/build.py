@@ -288,6 +288,9 @@ class Build:
             p.chmod(0o755 if p.is_dir() else 0o644)
         for p in (lib/'GlassSwitchDock.dylib', pb/'GlassSwitchDockPrefs', stage/'DEBIAN/postinst'):
             p.chmod(0o755)
+        # Seal the assembled preference bundle, including its Info.plist and resources.
+        self.run(['codesign', '--force', '--sign', '-', '--timestamp=none', pb])
+        self.run(['codesign', '--verify', '--strict', '--verbose=4', pb])
         name = f'{CONFIG["package"]}_{CONFIG["version"]}_{variant["architecture"]}.deb'
         result = mkdeb.build(stage, ROOT/'dist'/name, int(os.environ.get('SOURCE_DATE_EPOCH', '0')))
         output = ROOT/'dist'/name

@@ -168,7 +168,8 @@ def verify(path, arch, native=True):
     resources = base+'Library/Application Support/GlassSwitchDock/GlassSwitchDockResources.bundle'
     resource_files = {resources+'/default.metallib', resources+'/Info.plist',
                       resources+'/GlassifyShaders.bundle/default.metallib', resources+'/GlassifyShaders.bundle/Info.plist'}
-    required = {main, filt, prefs+'/GlassSwitchDockPrefs', prefs+'/Root.plist', prefs+'/Info.plist', entry,
+    required = {main, filt, prefs+'/GlassSwitchDockPrefs', prefs+'/Root.plist', prefs+'/Info.plist',
+                prefs+'/_CodeSignature/CodeResources', entry,
                 base+'usr/share/icons/com.ning.glassswitchdock.png', *resource_files,
                 *(prefs+'/'+x for x in ('icon.png', 'icon@2x.png', 'icon@3x.png'))}
     require(required <= set(files), 'Missing payload files: '+str(sorted(required-set(files))))
@@ -223,6 +224,8 @@ def verify(path, arch, native=True):
                 require(rp in ('/usr/lib/swift', '@loader_path', '@loader_path/Frameworks'), 'Build path leaked into rpath '+rp)
             if native:
                 item['native_strict_signature'] = native_sign_verify(root / name)
+                if name == prefs+'/GlassSwitchDockPrefs':
+                    item['native_strict_bundle_signature'] = native_sign_verify(root / prefs)
             else:
                 item['native_strict_signature'] = {'status': 'not_run', 'reason': 'structural-only mode requested'}
             item['path'] = name

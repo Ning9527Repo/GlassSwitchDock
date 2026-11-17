@@ -40,7 +40,7 @@ void NGRunSwitchTests(NGRecorder *r, UIView *root) {
         UIView *second = NGSwitchComponent(b, fixture, style);
         [r check:component && second && component != second && NGOriginalSwitches(fixture).count == 2
                name:NGID(style, @"original_identity")
-           evidence:@{@"classes": [NGOriginalSwitches(fixture) valueForKey:@"class"].description,
+           evidence:@{@"classes": [[NGOriginalSwitches(fixture) valueForKey:@"class"] description],
                       @"count": @(NGOriginalSwitches(fixture).count)}];
         if (!component || !second) continue;
         if (style == 0) {

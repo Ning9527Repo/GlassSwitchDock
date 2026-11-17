@@ -17,7 +17,7 @@ static void NGSwitchWindow(UISwitch *s,SEL c) { if (gSWWindow) gSWWindow(s,c); N
 static void NGSwitchParent(UISwitch *s,SEL c) { if (gSWParent) gSWParent(s,c); NGRefreshSwitch(s); }
 static void NGSwitchOn(UISwitch *s,SEL c,BOOL v) { if (gSWOn) gSWOn(s,c,v); NGSyncSwitch(s,NO); }
 static void NGSwitchOnAnimated(UISwitch *s,SEL c,BOOL v,BOOL a) { if (gSWOnAnimated) gSWOnAnimated(s,c,v,a); NGSyncSwitch(s,a); }
-static void NGSwitchEnabled(UISwitch *s,SEL c,BOOL v) { if (gSWEnabled) gSWEnabled(s,c,v); NGSyncSwitch(s,NO); }
+static void NGHookSwitchEnabled(UISwitch *s,SEL c,BOOL v) { if (gSWEnabled) gSWEnabled(s,c,v); NGSyncSwitch(s,NO); }
 static void NGSwitchHidden(UISwitch *s,SEL c,BOOL v) { if (gSWHidden) gSWHidden(s,c,v); NGRefreshSwitch(s); }
 static void NGSwitchAlpha(UISwitch *s,SEL c,CGFloat v) { BOOL replaced=NGHandleSwitchAlpha(s,v); if (gSWAlpha) gSWAlpha(s,c,replaced?0:v); }
 static void NGSwitchInteraction(UISwitch *s,SEL c,BOOL v) { if (gSWInteraction) gSWInteraction(s,c,v); NGRefreshSwitch(s); }
@@ -59,7 +59,7 @@ __attribute__((constructor)) static void NGInitialize(void) {
         NGInstallMethod(sw,@selector(didMoveToSuperview),(IMP)NGSwitchParent,(IMP *)&gSWParent);
         NGInstallMethod(sw,@selector(setOn:),(IMP)NGSwitchOn,(IMP *)&gSWOn);
         NGInstallMethod(sw,@selector(setOn:animated:),(IMP)NGSwitchOnAnimated,(IMP *)&gSWOnAnimated);
-        NGInstallMethod(sw,@selector(setEnabled:),(IMP)NGSwitchEnabled,(IMP *)&gSWEnabled);
+        NGInstallMethod(sw,@selector(setEnabled:),(IMP)NGHookSwitchEnabled,(IMP *)&gSWEnabled);
         NGInstallMethod(sw,@selector(setHidden:),(IMP)NGSwitchHidden,(IMP *)&gSWHidden);
         NGInstallMethod(sw,@selector(setAlpha:),(IMP)NGSwitchAlpha,(IMP *)&gSWAlpha);
         NGInstallMethod(sw,@selector(setUserInteractionEnabled:),(IMP)NGSwitchInteraction,(IMP *)&gSWInteraction);

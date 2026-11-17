@@ -135,6 +135,12 @@ def check():
     bridge = (ROOT / 'src/Bridge.h').read_text()
     if 'NGBundleResources' not in bridge:
         raise ValueError('Swift bridging header must declare NGBundleResources')
+    exports = set(re.findall(r'FOUNDATION_EXPORT\s+[^;\n]*?\b(NG\w+)\s*\(', bridge))
+    for source in sources['core']:
+        declarations = set(re.findall(r'^static\s+(?!.*\(\*).*?\b(NG\w+)\s*\(', source.read_text(), re.M))
+        conflicts = exports & declarations
+        if conflicts:
+            raise ValueError('Static hook conflicts with exported function in '+rel(source)+': '+', '.join(sorted(conflicts)))
     hooksrc = '\n'.join(p.read_text() for p in sources['core'])
     if 'MSHookMessageEx' in hooksrc and 'dlsym' not in hooksrc:
         raise ValueError('MSHookMessageEx must resolve at runtime via dlsym')

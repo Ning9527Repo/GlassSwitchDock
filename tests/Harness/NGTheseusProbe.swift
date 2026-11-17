@@ -24,9 +24,11 @@ final class NGTheseusProbe: NSObject {
 
     @objc static func inspectClear(_ view: UIView) -> NSDictionary {
         guard let glass = view as? TheseusView else { return ["error": "not original TheseusView"] }
-        let expected = TheseusConfiguration.clear
-        // All optics, hidden lens-chain, rim and padding equal the real preset.
-        // Shape radius/capsule and capture backend are independently asserted.
+        let original = TheseusConfiguration.clear
+        var expected = original
+        expected.glassRim?.bandBias = 0 // The single, explicitly requested Dock edge change.
+        // Everything equals the real preset except the documented side-band
+        // bias. Geometry and the single edge adjustment are asserted separately.
         func fingerprint(_ value: Any) -> String {
             let mirror = Mirror(reflecting: value)
             if let color = value as? UIColor {
@@ -53,7 +55,9 @@ final class NGTheseusProbe: NSObject {
         let actual = optics(glass.configuration), reference = optics(expected)
         let mismatches = Set(actual.keys).union(reference.keys).sorted().filter { actual[$0] != reference[$0] }
         var fields: [String: Any] = ["class": NSStringFromClass(type(of: glass)),
-                                   "matchesOriginalClear": mismatches.isEmpty,
+                                   "matchesClearExceptSideBandBias": mismatches.isEmpty,
+                                   "originalBandBias": original.glassRim?.bandBias ?? -999,
+                                   "dockBandBias": glass.configuration.glassRim?.bandBias ?? -999,
                                    "mismatches": mismatches, "actual": actual, "expected": reference,
                                    "isRendering": glass.isRendering,
                                    "captureMethod": String(describing: glass.configuration.captureMethod),

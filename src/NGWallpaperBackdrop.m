@@ -47,66 +47,125 @@ static NSDictionary *NGInspectWallpaperImage(UIImage *image) {
     CFTimeInterval _lastCapture;
     __weak UIWindow *_captureWindow;
     CGRect _lastScreenRect;
+    __weak UIView *_wallpaperSource;
+    CFTimeInterval _lastDiscovery;
+    UIGraphicsImageRenderer *_bitmapRenderer;
+    CGFloat _rendererScale;
+    NSData *_lastPixels;
+    NSString *_lastChecksum;
+    NSUInteger _attempts;
+    NSUInteger _discoveries;
+    NSUInteger _unchanged;
+    NSUInteger _failures;
+    NSTimeInterval _captureInterval;
 }
 + (Class)layerClass { return NGWallpaperBitmapLayer.class; }
 - (instancetype)initWithFrame:(CGRect)frame {
     if ((self=[super initWithFrame:frame])) {
         self.hidden=YES; self.userInteractionEnabled=NO; self.isAccessibilityElement=NO;
         self.backgroundColor=UIColor.clearColor; self.opaque=NO;
+        _captureInterval=0.25;
     }
     return self;
 }
 - (BOOL)hasFrame { return _hasFrame; }
 - (NSUInteger)generation { return _generation; }
-- (NSDictionary *)diagnostics { return _diagnostics ?: @{@"valid":@NO,@"reason":@"no wallpaper frame"}; }
+- (NSUInteger)captureAttempts { return _attempts; }
+- (NSDictionary *)diagnostics {
+    NSMutableDictionary *details=[(_diagnostics ?: @{@"valid":@NO,@"reason":@"no wallpaper frame"}) mutableCopy];
+    details[@"captureAttempts"]=@(_attempts); details[@"sourceDiscoveries"]=@(_discoveries);
+    details[@"unchangedFrames"]=@(_unchanged); details[@"failedAttempts"]=@(_failures);
+    details[@"generation"]=@(_generation); details[@"captureInterval"]=@(_captureInterval);
+    return details;
+}
+- (void)setCaptureInterval:(NSTimeInterval)value {
+    _captureInterval=MIN(MAX(value,0.25),2.0);
+}
+- (NSTimeInterval)captureInterval { return _captureInterval; }
+
 - (BOOL)updateForDock:(UIView *)dock background:(UIView *)background force:(BOOL)force {
     UIWindow *window=dock.window;
-    if (!window || !self.superview) { _hasFrame=NO; return NO; }
+    if (!window || !self.superview) return _hasFrame;
     CGRect onScreen=[background convertRect:background.bounds toView:window];
-    // Supply the original shaders with margin for refraction; geometry remains system-owned.
     CGRect capture=CGRectIntersection(CGRectInset(onScreen,-96,-96),window.bounds);
-    if (CGRectIsEmpty(capture) || CGRectIsNull(capture)) { _hasFrame=NO; return NO; }
-    self.frame=[window convertRect:capture toView:self.superview];
-    BOOL geometryChanged=window!=_captureWindow || !CGRectEqualToRect(capture,_lastScreenRect);
-    if (!force && !geometryChanged && CACurrentMediaTime()-_lastCapture<0.25) return _hasFrame;
-    _lastCapture=CACurrentMediaTime(); _captureWindow=window; _lastScreenRect=capture;
-    NSMutableOrderedSet<UIWindow *> *windows=[NSMutableOrderedSet orderedSetWithObject:window];
-    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes)
-        if ([scene isKindOfClass:UIWindowScene.class]) [windows addObjectsFromArray:((UIWindowScene *)scene).windows];
-    [windows addObjectsFromArray:UIApplication.sharedApplication.windows];
+    if (CGRectIsEmpty(capture) || CGRectIsNull(capture)) return _hasFrame;
+    CGRect destination=[window convertRect:capture toView:self.superview];
+    BOOL geometryChanged=window!=_captureWindow || !CGRectEqualToRect(capture,_lastScreenRect) || !CGRectEqualToRect(self.frame,destination);
+    CFTimeInterval now=CACurrentMediaTime();
+    // All callers, including first-frame recovery, obey the capture budget.
+    if (_lastCapture>0 && now-_lastCapture<_captureInterval) return _hasFrame;
+    (void)force;
+    _lastCapture=now; _attempts++;
     NSMutableArray<UIView *> *candidates=[NSMutableArray array];
-    for (UIWindow *candidate in windows) {
-        if (candidate.hidden || candidate.alpha<=0.01 || candidate.screen!=window.screen) continue;
-        NGCollectWallpaperViews(candidate,dock,candidates);
+    UIView *cached=_wallpaperSource;
+    BOOL cachedVisible=cached && cached.window && cached.window.screen==window.screen &&
+        ![dock isDescendantOfView:cached];
+    for (UIView *parent=cached;parent && cachedVisible;parent=parent.superview)
+        cachedVisible=!parent.hidden && parent.alpha>0.01;
+    if (cachedVisible) [candidates addObject:cached];
+    // Cache the source identity instead of walking every window on every tick.
+    if (!cachedVisible && (_lastDiscovery==0 || now-_lastDiscovery>=1.0)) {
+        _lastDiscovery=now; _discoveries++;
+        NSMutableOrderedSet<UIWindow *> *windows=[NSMutableOrderedSet orderedSetWithObject:window];
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes)
+            if ([scene isKindOfClass:UIWindowScene.class]) [windows addObjectsFromArray:((UIWindowScene *)scene).windows];
+        [windows addObjectsFromArray:UIApplication.sharedApplication.windows];
+        for (UIWindow *candidate in windows) {
+            if (candidate.hidden || candidate.alpha<=0.01 || candidate.screen!=window.screen) continue;
+            NGCollectWallpaperViews(candidate,dock,candidates);
+        }
+    }
+    CGFloat scale=window.screen.scale;
+    if (!_bitmapRenderer || !CGSizeEqualToSize(_bitmapRenderer.format.bounds.size,capture.size) || _rendererScale!=scale) {
+        UIGraphicsImageRendererFormat *format=[UIGraphicsImageRendererFormat defaultFormat];
+        format.opaque=NO; format.scale=scale;
+        _bitmapRenderer=[[UIGraphicsImageRenderer alloc] initWithSize:capture.size format:format];
+        _rendererScale=scale;
     }
     for (UIView *source in candidates) {
         CGRect rect=[window convertRect:capture toView:source];
         CGRect visible=CGRectIntersection(rect,source.bounds);
-        if (CGRectIsNull(visible) || visible.size.width*visible.size.height < rect.size.width*rect.size.height*0.98) continue;
-        UIGraphicsImageRendererFormat *format=[UIGraphicsImageRendererFormat defaultFormat];
-        format.opaque=NO; format.scale=window.screen.scale;
-        UIGraphicsImageRenderer *renderer=[[UIGraphicsImageRenderer alloc] initWithSize:capture.size format:format];
+        if (CGRectIsEmpty(rect) || CGRectIsNull(visible) || visible.size.width*visible.size.height<rect.size.width*rect.size.height*0.98) {
+            if (source==cached) _wallpaperSource=nil;
+            continue;
+        }
         __block BOOL drew=NO;
-        UIImage *image=[renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        UIImage *image=[_bitmapRenderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
             CGContextScaleCTM(ctx.CGContext,capture.size.width/rect.size.width,capture.size.height/rect.size.height);
             CGContextTranslateCTM(ctx.CGContext,-rect.origin.x,-rect.origin.y);
-            // Wallpaper subtree only: drawHierarchy includes render-server wallpaper layers.
-            // Never capture a root containing the Dock, so glass cannot feed back into itself.
             drew=[source drawViewHierarchyInRect:source.bounds afterScreenUpdates:NO];
         }];
         NSDictionary *inspection=NGInspectWallpaperImage(image);
-        if (!drew || ![inspection[@"valid"] boolValue]) continue;
+        if (!drew || ![inspection[@"valid"] boolValue]) {
+            if (source==cached) _wallpaperSource=nil;
+            continue;
+        }
+        _wallpaperSource=source;
+        // Exact bytes after the small signature check: don't miss a local change
+        // just because the mean colour or thumbnail happened to be the same.
+        NSData *pixels=CFBridgingRelease(CGDataProviderCopyData(CGImageGetDataProvider(image.CGImage)));
+        BOOL same=!geometryChanged && _lastPixels && [_lastChecksum isEqual:inspection[@"checksum"]] &&
+            pixels && [pixels isEqualToData:_lastPixels];
+        if (same) { _unchanged++; _lastCapture=CACurrentMediaTime(); return _hasFrame; }
         [CATransaction begin]; [CATransaction setDisableActions:YES];
+        if (!CGRectEqualToRect(self.frame,destination)) self.frame=destination;
         ((NGWallpaperBitmapLayer *)self.layer).bitmap=image;
         [CATransaction commit];
+        _lastPixels=pixels; _lastChecksum=inspection[@"checksum"];
+        _captureWindow=window; _lastScreenRect=capture;
         _generation++; _hasFrame=YES;
         NSMutableDictionary *details=[inspection mutableCopy]; details[@"sourceClass"]=NSStringFromClass(source.class);
         details[@"captureRect"]=NSStringFromCGRect(capture); details[@"generation"]=@(_generation);
-        details[@"method"]=@"wallpaper-only UIKit hierarchy bitmap"; _diagnostics=details;
+        details[@"method"]=@"cached-source wallpaper-only UIKit hierarchy bitmap";
+        details[@"lastCaptureMilliseconds"]=@((CACurrentMediaTime()-now)*1000.0); _diagnostics=details;
+        _lastCapture=CACurrentMediaTime();
         return YES;
     }
-    _hasFrame=NO;
-    _diagnostics=@{@"valid":@NO,@"reason":@"No opaque wallpaper-only snapshot; native background retained",@"candidateCount":@(candidates.count)};
-    return NO;
+    // Transitions may momentarily hide the wallpaper. Keep the last valid GPU
+    // input rather than toggling back to the system background on one failure.
+    _failures++; _lastCapture=CACurrentMediaTime();
+    _diagnostics=@{@"valid":@(_hasFrame),@"reason":_hasFrame ? @"Transient capture failure; retained previous frame" : @"No valid wallpaper frame; native background retained",
+        @"candidateCount":@(candidates.count)};
+    return _hasFrame;
 }
 @end

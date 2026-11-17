@@ -166,7 +166,7 @@ def verify(path, arch, native=True):
     prefs = base+'Library/PreferenceBundles/GlassSwitchDockPrefs.bundle'
     entry = base+'Library/PreferenceLoader/Preferences/GlassSwitchDock.plist'
     resources = base+'Library/Application Support/GlassSwitchDock/GlassSwitchDockResources.bundle'
-    resource_files = {resources+'/DockClearStatic.png', resources+'/default.metallib', resources+'/Info.plist',
+    resource_files = {resources+'/default.metallib', resources+'/Info.plist',
                       resources+'/GlassifyShaders.bundle/default.metallib', resources+'/GlassifyShaders.bundle/Info.plist'}
     required = {main, filt, prefs+'/GlassSwitchDockPrefs', prefs+'/Root.plist', prefs+'/Info.plist',
                 prefs+'/_CodeSignature/CodeResources', entry,
@@ -187,7 +187,6 @@ def verify(path, arch, native=True):
             require(files[name][:4] == b'MTLB', 'Invalid Metal library: '+name)
     for name in (prefs+'/icon.png', prefs+'/icon@2x.png', prefs+'/icon@3x.png', base+'usr/share/icons/com.ning.glassswitchdock.png'):
         require(files[name].startswith(b'\x89PNG\r\n\x1a\n'), 'Invalid PNG '+name)
-    require(files[resources+'/DockClearStatic.png'].startswith(b'\x89PNG\r\n\x1a\n'), 'Missing fixed Clear image')
     require(plistlib.loads(files[prefs+'/Info.plist']).get('CFBundleExecutable') == 'GlassSwitchDockPrefs', 'Wrong prefs executable')
     ent = plistlib.loads(files[entry]); ent = ent.get('entry', ent)
     require(ent.get('bundle') == 'GlassSwitchDockPrefs', 'Wrong PreferenceLoader bundle')

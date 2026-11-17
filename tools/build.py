@@ -175,14 +175,6 @@ class Build:
             self.run(self.tool('metallib')+[*air, '-o', bundle/'default.metallib'])
             (bundle/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': ident,
                  'CFBundleName': bundle.stem, 'CFBundlePackageType': 'BNDL', 'CFBundleVersion': CONFIG['version']}))
-        static = ROOT/'assets/DockClearStatic.png'
-        provenance = ROOT/'assets/DockClearStatic.json'
-        if not static.is_file() or not provenance.is_file():
-            raise RuntimeError('Checked-in fixed Clear image and provenance are required')
-        expected = json.loads(provenance.read_text())['png_sha256']
-        if sha256(static) != expected:
-            raise RuntimeError('Fixed Clear image does not match recorded provenance')
-        shutil.copy2(static, destination/'DockClearStatic.png')
         return destination
 
     def core(self):

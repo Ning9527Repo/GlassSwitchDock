@@ -53,4 +53,3 @@ FOUNDATION_EXPORT void NGRunSwitchTests(NGRecorder *recorder, UIView *root);
 FOUNDATION_EXPORT void NGRunDockTests(NGRecorder *recorder, UIView *root, dispatch_block_t completion);
 FOUNDATION_EXPORT void NGRunResourceTests(NGRecorder *recorder);
 FOUNDATION_EXPORT void NGRefreshFixtureDock(UIView *dock);
-FOUNDATION_EXPORT NSDictionary *NGDockDiagnostics(UIView *dock);

@@ -20,6 +20,9 @@ FOUNDATION_EXPORT void NGRefreshDock(UIView *dock);
 FOUNDATION_EXPORT void NGRefreshDocks(void);
 FOUNDATION_EXPORT void NGRemoveDock(UIView *dock);
 FOUNDATION_EXPORT void NGRefreshAll(void);
+#ifdef NG_TESTING
+FOUNDATION_EXPORT NSDictionary *NGDockDiagnostics(UIView *dock);
+#endif
 
 @protocol NGSwitchComponent <NSObject>
 @property(nonatomic,copy,nullable) void (^onChanged)(BOOL value);

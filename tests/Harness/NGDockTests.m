@@ -100,6 +100,16 @@ static void NGCheckDockOptics(NGRecorder *r, SBDockView *dock, Class cls, NSInte
 static void NGAfter(NSTimeInterval seconds, dispatch_block_t action) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(seconds*NSEC_PER_SEC)),dispatch_get_main_queue(),action);
 }
+static void NGWaitForDockFrame(SBDockView *dock, NSInteger style, NSString *path, NSString *previousChecksum,
+                               CFTimeInterval deadline, void (^completion)(NSDictionary *)) {
+    UIView *material=NGMaterial(dock,style);
+    NSDictionary *frame=NGFrame(material,style,path);
+    BOOL ready=[frame[@"ready"] boolValue] && [frame[@"wrotePNG"] boolValue];
+    BOOL changed=!previousChecksum || ![previousChecksum isEqual:frame[@"checksum"]];
+    if ((ready && changed) || CACurrentMediaTime()>=deadline) { completion(frame); return; }
+    // Yield the main queue so the original renderer can publish its GPU snapshot.
+    NGAfter(0.1, ^{ NGWaitForDockFrame(dock,style,path,previousChecksum,deadline,completion); });
+}
 static void NGRunDockCase(NGRecorder *r, UIView *root, NSUInteger index, dispatch_block_t completion) {
     if (index>=4) { completion(); return; }
     Class cls=index<2 ? SBDockView.class : SBFloatingDockPlatterView.class;
@@ -128,14 +138,14 @@ static void NGRunDockCase(NGRecorder *r, UIView *root, NSUInteger index, dispatc
             [r check:empty!=nil && [wallpaper.layer isKindOfClass:NGServerWallpaperLayer.class]
                  name:NGDockID(cls,style,@"server_wallpaper_fixture") evidence:@{@"layerClass":NSStringFromClass(wallpaper.layer.class)}];
             NSString *firstName=[NGDockID(cls,style,@"gpu_a") stringByAppendingPathExtension:@"png"];
-            NSDictionary *first=NGFrame(material,style,[r.output stringByAppendingPathComponent:firstName]);
+            NGWaitForDockFrame(dock,style,[r.output stringByAppendingPathComponent:firstName],nil,CACurrentMediaTime()+8.0, ^(NSDictionary *first) {
             NSDictionary *firstCapture=[capture.diagnostics copy];
             wallpaper.phase++; [wallpaper setNeedsDisplay];
             NGAfter(0.15, ^{
                 NGRefreshFixtureDock(dock);
                 NGAfter(0.9, ^{
                     NSString *secondName=[NGDockID(cls,style,@"gpu_b") stringByAppendingPathExtension:@"png"];
-                    NSDictionary *second=NGFrame(material,style,[r.output stringByAppendingPathComponent:secondName]);
+                    NGWaitForDockFrame(dock,style,[r.output stringByAppendingPathComponent:secondName],first[@"checksum"],CACurrentMediaTime()+8.0, ^(NSDictionary *second) {
                     BOOL pixels=[first[@"ready"] boolValue] && [second[@"ready"] boolValue] &&
                         [first[@"wrotePNG"] boolValue] && [second[@"wrotePNG"] boolValue] &&
                         ![first[@"checksum"] isEqual:second[@"checksum"]];
@@ -160,7 +170,9 @@ static void NGRunDockCase(NGRecorder *r, UIView *root, NSUInteger index, dispatc
                         NGRemoveDock(dock); [dock removeFromSuperview]; [wallpaper removeFromSuperview];
                         NGRunDockCase(r,root,index+1,completion);
                     });
+                    });
                 });
+            });
             });
         });
     });

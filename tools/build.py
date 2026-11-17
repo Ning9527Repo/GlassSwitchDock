@@ -67,7 +67,7 @@ class Build:
         self.src = discover()
         g = self.src['gsrc']
         self.includes = [ROOT / 'src', self.obj, ROOT / 'packaging/include', g/'include',
-                         g/'Platform', g/'Core/include', g/'Core', g/'Shaders', ROOT/'tests/Harness']
+                         g/'Platform', g/'Core/include', g/'Core', g/'Shaders', ROOT/'tests/Harness', ROOT/'render']
         if self.harness:
             (self.obj/'FixtureConfig.h').write_text('#pragma once\n#define NG_PREFERENCE_DOMAIN @"'+CONFIG['package']+'"\n')
         self.ccbase = ['-target', self.target, '-isysroot', self.sdk, '-O2', '-fblocks', '-fmodules',
@@ -162,7 +162,8 @@ class Build:
     def resources(self, destination):
         destination.mkdir(parents=True, exist_ok=True)
         groups = [(self.src['theseus_metal'], destination, 'com.ning.glassswitchdock.resources'),
-                  (self.src['glassify_metal'], destination/'GlassifyShaders.bundle', 'com.ning.glassswitchdock.glassifyshaders')]
+                  (self.src['glassify_metal'], destination/'GlassifyShaders.bundle', 'com.ning.glassswitchdock.glassifyshaders'),
+                  (self.src['transport_metal'], destination/'DockTransport.bundle', 'com.ning.glassswitchdock.transport')]
         for sources, bundle, ident in groups:
             bundle.mkdir(parents=True, exist_ok=True)
             air = []
@@ -192,6 +193,20 @@ class Build:
         self.resources(self.out/'GlassSwitchDockResources.bundle')
         return dylib
 
+    def backend(self):
+        objects = self.compile(self.src['render'] + self.src['cpp'])
+        output = self.out/'GlassSwitchDockRender.dylib'
+        link = ['-target', self.target, '-isysroot', self.sdk, '-Wl,-undefined,error', '-Wl,-twolevel_namespace', '-lc++']
+        for framework in ('Foundation', 'CoreFoundation', 'Metal', 'QuartzCore'):
+            link += ['-framework', framework]
+        if not self.smoke and self.variant == 'arm64e':
+            link += ['-L'+str(ROOT/'packaging/stubs'), '-Wl,-needed-lroothide']
+        self.run(self.tool('clang++')+link+['-dynamiclib',
+                 '-Wl,-install_name,@rpath/GlassSwitchDockRender.dylib', *objects, '-o', output])
+        self.run(['codesign', '--force', '--sign', '-', '--timestamp=none', output])
+        self.run(['codesign', '--verify', '--strict', '--verbose=4', output])
+        return output
+
     def preferences(self):
         # The compile SDK stays current Xcode; private-framework link interface may
         # come from original Theos iPhoneOS16.5.sdk or checked-in minimal fallback.
@@ -220,7 +235,7 @@ class Build:
             raise RuntimeError('make smoke needs parent-supplied tests/Harness/main.m or main.mm')
         config = self.obj/'FixtureConfig.h'
         config.write_text('#pragma once\n#define NG_PREFERENCE_DOMAIN @"'+CONFIG['package']+'"\n')
-        objects = objects+self.compile(harness)
+        objects = objects+self.compile(self.src['render']+harness)
         app = self.out/'GlassSwitchDockHarness.app'
         app.mkdir(parents=True, exist_ok=True)
         output = app/'GlassSwitchDockHarness'
@@ -241,7 +256,7 @@ class Build:
         self.run(['codesign', '--verify', '--strict', '--verbose=4', app])
         return app
 
-    def package(self, dylib, prefs):
+    def package(self, dylib, prefs, backend):
         vendor_manifest()  # Recheck originals immediately before staging.
         stage = self.out/'stage'
         base = stage/CONFIG['variants'][self.variant]['prefix']
@@ -255,6 +270,8 @@ class Build:
             p.mkdir(parents=True, exist_ok=True)
         shutil.copy2(dylib, lib/'GlassSwitchDock.dylib')
         shutil.copy2(ROOT/'src/Filter.plist', lib/'GlassSwitchDock.plist')
+        shutil.copy2(backend, lib/'GlassSwitchDockRender.dylib')
+        shutil.copy2(ROOT/'render/Filter.plist', lib/'GlassSwitchDockRender.plist')
         shutil.copy2(prefs, pb/'GlassSwitchDockPrefs')
         for src in sorted((ROOT/'prefs/Resources').rglob('*')):
             if src.is_file() and src.name != 'entry.plist':
@@ -286,7 +303,7 @@ class Build:
         shutil.copy2(ROOT/'packaging/postinst', stage/'DEBIAN/postinst')
         for p in stage.rglob('*'):
             p.chmod(0o755 if p.is_dir() else 0o644)
-        for p in (lib/'GlassSwitchDock.dylib', pb/'GlassSwitchDockPrefs', stage/'DEBIAN/postinst'):
+        for p in (lib/'GlassSwitchDock.dylib', lib/'GlassSwitchDockRender.dylib', pb/'GlassSwitchDockPrefs', stage/'DEBIAN/postinst'):
             p.chmod(0o755)
         # Seal the assembled preference bundle, including its Info.plist and resources.
         self.run(['codesign', '--force', '--sign', '-', '--timestamp=none', pb])
@@ -309,7 +326,7 @@ class Build:
                 result.update({'status': 'passed', 'output': str(core), 'NG_TESTING': True,
                                'native_runtime_executed': False})
             else:
-                result.update({'status': 'passed', 'package': self.package(core, self.preferences())})
+                result.update({'status': 'passed', 'package': self.package(core, self.preferences(), self.backend())})
             return result
         except Exception as e:
             result['error'] = str(e)

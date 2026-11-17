@@ -155,7 +155,7 @@ def verify(path, arch, native=True):
         require(control.get(key) == value, 'Wrong control '+key+': '+str(control.get(key)))
     post = ctl['postinst'].decode()
     commands = '\n'.join(line for line in post.splitlines() if line.strip() and not line.lstrip().startswith('#'))
-    require(commands.strip() == 'set -e\nexit 0', 'postinst must not signal processes or mutate external directories')
+    require(ctl['postinst'] == (Path(__file__).resolve().parents[1]/'packaging/postinst').read_bytes(), 'Unexpected installer state-directory actions')
     require(not re.search(r'kill|respring|sbreload|launchctl', commands, re.I), 'Forbidden installer process action')
     md5sums = dict(line.split('  ', 1)[::-1] for line in ctl['md5sums'].decode().splitlines())
     require(set(md5sums) == set(files), 'md5sums payload coverage mismatch')
@@ -163,25 +163,29 @@ def verify(path, arch, native=True):
         require(hashlib.md5(data).hexdigest() == md5sums[name], 'Payload checksum mismatch: '+name)
     main = base+'Library/MobileSubstrate/DynamicLibraries/GlassSwitchDock.dylib'
     filt = base+'Library/MobileSubstrate/DynamicLibraries/GlassSwitchDock.plist'
+    backend = base+'Library/MobileSubstrate/DynamicLibraries/GlassSwitchDockRender.dylib'
+    backend_filter = base+'Library/MobileSubstrate/DynamicLibraries/GlassSwitchDockRender.plist'
     prefs = base+'Library/PreferenceBundles/GlassSwitchDockPrefs.bundle'
     entry = base+'Library/PreferenceLoader/Preferences/GlassSwitchDock.plist'
     resources = base+'Library/Application Support/GlassSwitchDock/GlassSwitchDockResources.bundle'
     resource_files = {resources+'/default.metallib', resources+'/Info.plist',
-                      resources+'/GlassifyShaders.bundle/default.metallib', resources+'/GlassifyShaders.bundle/Info.plist'}
-    required = {main, filt, prefs+'/GlassSwitchDockPrefs', prefs+'/Root.plist', prefs+'/Info.plist',
+                      resources+'/GlassifyShaders.bundle/default.metallib', resources+'/GlassifyShaders.bundle/Info.plist',
+                      resources+'/DockTransport.bundle/default.metallib', resources+'/DockTransport.bundle/Info.plist'}
+    required = {main, filt, backend, backend_filter, prefs+'/GlassSwitchDockPrefs', prefs+'/Root.plist', prefs+'/Info.plist',
                 prefs+'/_CodeSignature/CodeResources', entry,
                 base+'usr/share/icons/com.ning.glassswitchdock.png', *resource_files,
                 *(prefs+'/'+x for x in ('icon.png', 'icon@2x.png', 'icon@3x.png'))}
     require(required <= set(files), 'Missing payload files: '+str(sorted(required-set(files))))
-    allowed = {main, filt, entry, base+'usr/share/icons/com.ning.glassswitchdock.png', *resource_files}
+    allowed = {main, filt, backend, backend_filter, entry, base+'usr/share/icons/com.ning.glassswitchdock.png', *resource_files}
     for name in files:
         require(name in allowed or name.startswith(prefs+'/') or name.startswith(base+'usr/share/doc/'+CONFIG['package']+'/'),
                 'Unexpected installed payload file: '+name)
     entries = [name for name in files if '/PreferenceLoader/Preferences/' in name]
     require(entries == [entry], 'Exactly one settings entry required')
     dylibs = [name for name in files if name.endswith('.dylib')]
-    require(dylibs == [main], 'Exactly one main dylib required')
-    require(len([name for name in files if name.endswith('.metallib')]) == 2, 'Exactly two original Metal libraries required')
+    require(set(dylibs) == {main, backend}, 'One frontend and one self-built backend required')
+    require(plistlib.loads(files[backend_filter]).get('Filter', {}).get('Bundles') == ['com.apple.backboardd'], 'Backend must select backboardd only')
+    require(len([name for name in files if name.endswith('.metallib')]) == 3, 'Two original material libraries and one transport library required')
     for name in resource_files:
         if name.endswith('.metallib'):
             require(files[name][:4] == b'MTLB', 'Invalid Metal library: '+name)
@@ -201,19 +205,24 @@ def verify(path, arch, native=True):
             dest.chmod(mode)
         specifiers(root / (prefs+'/Root.plist'))
         machos = [name for name, data in files.items() if data[:4] in MACH_MAGICS]
-        require(set(machos) == {main, prefs+'/GlassSwitchDockPrefs'}, 'Unexpected/missing packaged Mach-O')
+        require(set(machos) == {main, backend, prefs+'/GlassSwitchDockPrefs'}, 'Unexpected/missing packaged Mach-O')
         for name in machos:
             item = macho(files[name], arch)
-            require(item['filetype'] == (6 if name == main else 8), 'Wrong Mach-O file type '+name)
+            require(item['filetype'] == (6 if name in (main,backend) else 8), 'Wrong Mach-O file type '+name)
             require(ROOT_HIDE in item['dependencies'] if arch == 'arm64e' else ROOT_HIDE not in item['dependencies'],
                     'RootHide runtime dependency mismatch '+name)
             if name == main:
                 require(b'GLSSwitch\x00' not in files[name], 'Removed Glassify switch still compiled into product')
-                require(b'NGWallpaperBackdrop\x00' in files[name], 'Wallpaper capture integration missing')
+                require(b'NGWallpaperBackdrop\x00' not in files[name], 'Removed Dock screenshot driver still present')
+                require(b'NGSystemBackdrop\x00' in files[name], 'Own system backdrop integration missing')
                 require(item['install_name'] == '@rpath/GlassSwitchDock.dylib', 'Wrong main install name')
                 require(any('libswiftCore.dylib' in p for p in item['dependencies']), 'Main must link actual Swift runtime')
                 for framework in CONFIG['frameworks']:
                     require(any('/'+framework+'.framework/' in p for p in item['dependencies']), 'Missing linked framework '+framework)
+            elif name == backend:
+                require(item['install_name'] == '@rpath/GlassSwitchDockRender.dylib', 'Wrong self-built backend install name')
+                require(b'com.ning.glassswitchdock.dock.' in files[name], 'Own filter namespace missing')
+                require(b'com.wkk.systembox' not in files[name], 'Foreign backend namespace present')
             else:
                 require(PREFERENCES in item['dependencies'], 'Preferences must be explicitly bound')
                 ps = [x for x in item['imports'] if x['symbol'] == '_OBJC_CLASS_$_PSListController']

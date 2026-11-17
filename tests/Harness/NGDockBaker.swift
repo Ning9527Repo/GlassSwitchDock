@@ -48,7 +48,7 @@ final class NGDockBaker: NSObject {
         renderer.snapshotDidUpdate = {
             guard let image = renderer.captureSnapshot, image.width == 1176, image.height == 294,
                   let png = UIImage(cgImage: image).pngData() else { return }
-            let directory = NSProcessInfo.processInfo.environment["NG_TEST_OUTPUT"] ?? NSTemporaryDirectory()
+            let directory = ProcessInfo.processInfo.environment["NG_TEST_OUTPUT"] ?? NSTemporaryDirectory()
             let url = URL(fileURLWithPath: directory).appendingPathComponent("DockClearStatic.png")
             do {
                 try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

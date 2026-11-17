@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "origin": "original Theseus Clear shader on constant neutral background; no user screenshots",
+  "upstream": "71ca1c127a4e7fe3387361f160c4890dbd427f66",
+  "native_generation": {
+    "repo": "Ningios/GlassSwitchDock",
+    "commit": "1e10fceb971b7e908086c65764fd34707c3ffc77",
+    "run": 44023997343,
+    "artifact": 14302149385
+  },
+  "template": {
+    "width_px": 1176,
+    "height_px": 294,
+    "scale": 3,
+    "corner_radius_pt": 32,
+    "neutral_rgb": [
+      102,
+      102,
+      102
+    ]
+  },
+  "raw_sha256": "8f8493220e342f7e218eb78a3e40dfc799f454704928b3d1bcc80415702f00c8",
+  "png_sha256": "ee3a453c30bc2b755323efbaf8c49f421b5d389a7a79365eae279ccbc4c936d5",
+  "conversion": "tools/static_clear.py assets/DockClearStatic-original.png assets/DockClearStatic.png",
+  "semantics": "fixed foreground RGBA; normal alpha transparency, no wallpaper capture, refraction, appearance adaptation or on-device rendering loop",
+  "checks": {
+    "max_neutral_composite_error": 0,
+    "center_rgba": [
+      255,
+      255,
+      255,
+      45
+    ],
+    "transparent_corners": true,
+    "repeat_is_identical": true
+  }
+}

@@ -15,6 +15,10 @@
 + (NSDictionary *)settings;
 @end
 
+@interface NGDockBaker : NSObject
++ (void)startIn:(UIView *)root completion:(void (^)(BOOL))completion;
+@end
+
 @interface NGRecorder : NSObject
 @property(nonatomic, readonly) NSMutableArray<NSDictionary *> *checks;
 @property(nonatomic, readonly) NSString *output;

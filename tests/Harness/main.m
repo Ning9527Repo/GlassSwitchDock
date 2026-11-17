@@ -11,7 +11,12 @@
     NGPatternView *root = [[NGPatternView alloc] initWithFrame:self.window.bounds];
     controller.view = root; self.window.rootViewController = controller;
     [self.window makeKeyAndVisible];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ [self run:root]; });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [NGDockBaker startIn:root completion:^(BOOL success) {
+            if (!success) NSLog(@"Dock static asset bake failed; regression will report missing image");
+            [self run:root];
+        }];
+    });
     return YES;
 }
 - (void)run:(UIView *)root {

@@ -37,7 +37,7 @@ def validate(path):
     required.add('switch.theseus.uiview_bridge_contract')
     for cls in ('SBDockView','SBFloatingDockPlatterView'):
         for style in ('theseusClear','glassifyProminentClear'):
-            suffixes = DOCK if style=='theseusClear' else tuple(v for v in DOCK if v not in ('exact_original_clear_optics','container_geometry_only','actual_metal_backend_no_fallback'))+('exact_prominent_clear_config',)
+            suffixes = ('static_image_loaded','no_runtime_metal_or_wallpaper_capture','system_geometry_preserved','wallpaper_change_keeps_static_pixels','dock_icon_hit_test_preserved','disable_restores_background') if style=='theseusClear' else tuple(v for v in DOCK if v not in ('exact_original_clear_optics','container_geometry_only','actual_metal_backend_no_fallback'))+('exact_prominent_clear_config',)
             required.update('dock.'+cls+'.'+style+'.'+v for v in suffixes)
             required.add('screenshot.dock.'+cls+'.'+style+'.render')
         required.add('dock.'+cls+'.disable_restores_background')

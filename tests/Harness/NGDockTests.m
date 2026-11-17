@@ -110,10 +110,37 @@ static void NGWaitForDockFrame(SBDockView *dock, NSInteger style, NSString *path
     // Yield the main queue so the original renderer can publish its GPU snapshot.
     NGAfter(0.1, ^{ NGWaitForDockFrame(dock,style,path,previousChecksum,deadline,completion); });
 }
+static void NGRunStaticDockCase(NGRecorder *r, UIView *root, Class cls) {
+    NGWritePreferences(NO,YES,0);
+    SBDockView *dock=[[cls alloc] initWithFrame:CGRectMake(15,366,root.bounds.size.width-30,84)];
+    [root addSubview:dock]; CGFloat alpha=dock.backgroundView.alpha;
+    NGRefreshFixtureDock(dock);
+    UIView *glass=NGMaterial(dock,0);
+    UIImageView *image=nil;
+    for (UIView *child in glass.subviews) if ([child isKindOfClass:UIImageView.class]) image=(id)child;
+    [r check:glass && image.image.CGImage && NGMaterialCount(dock)==1 name:NGDockID(cls,0,@"static_image_loaded") evidence:@{@"class":glass?NSStringFromClass(glass.class):@"missing"}];
+    BOOL clean=![glass.layer isKindOfClass:CAMetalLayer.class];
+    for (UIView *child in NGDescendants(dock)) if ([child isKindOfClass:NGWallpaperBackdrop.class] || [child.layer isKindOfClass:CAMetalLayer.class]) clean=NO;
+    [r check:clean name:NGDockID(cls,0,@"no_runtime_metal_or_wallpaper_capture") evidence:@{@"clean":@(clean)}];
+    [r check:CGRectEqualToRect(glass.frame,dock.backgroundView.frame) && fabs(glass.layer.cornerRadius-dock.backgroundView.layer.cornerRadius)<0.001 name:NGDockID(cls,0,@"system_geometry_preserved") evidence:@{@"frame":NSStringFromCGRect(glass.frame)}];
+    NSData *before=image.image?UIImagePNGRepresentation(image.image):nil;
+    root.backgroundColor=UIColor.systemRedColor;
+    for (NSUInteger i=0;i<20;i++) NGRefreshFixtureDock(dock);
+    NSData *after=image.image?UIImagePNGRepresentation(image.image):nil;
+    [r check:before.length && [before isEqualToData:after] && NGMaterialCount(dock)==1 name:NGDockID(cls,0,@"wallpaper_change_keeps_static_pixels") evidence:@{@"bytes":@(before.length)}];
+    UIView *hit=[dock hitTest:[dock.icon convertPoint:CGPointMake(26,26) toView:dock] withEvent:nil];
+    [r check:!glass.userInteractionEnabled && !glass.isAccessibilityElement && (hit==dock.icon || [hit isDescendantOfView:dock.icon]) name:NGDockID(cls,0,@"dock_icon_hit_test_preserved") evidence:@{@"interactive":@(glass.userInteractionEnabled)}];
+    [r capture:root name:NGDockID(cls,0,@"render")];
+    NGWritePreferences(NO,NO,0); NGRefreshFixtureDock(dock);
+    [r check:NGMaterialCount(dock)==0 && fabs(dock.backgroundView.alpha-alpha)<0.001 name:NGDockID(cls,0,@"disable_restores_background") evidence:@{@"alpha":@(dock.backgroundView.alpha)}];
+    [dock removeFromSuperview];
+}
+
 static void NGRunDockCase(NGRecorder *r, UIView *root, NSUInteger index, dispatch_block_t completion) {
     if (index>=4) { completion(); return; }
     Class cls=index<2 ? SBDockView.class : SBFloatingDockPlatterView.class;
     NSInteger style=index%2;
+    if (style==0) { NGRunStaticDockCase(r,root,cls); NGRunDockCase(r,root,index+1,completion); return; }
     NGFixtureWallpaperView *wallpaper=[[NGFixtureWallpaperView alloc] initWithFrame:root.bounds];
     wallpaper.userInteractionEnabled=NO; wallpaper.opaque=YES;
     [root insertSubview:wallpaper atIndex:0]; [wallpaper setNeedsDisplay];

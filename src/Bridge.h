@@ -26,10 +26,8 @@ FOUNDATION_EXPORT void NGRefreshAll(void);
 @property(nonatomic,getter=isOn) BOOL on;
 - (void)setOn:(BOOL)value animated:(BOOL)animated;
 @end
-@protocol NGGlassComponent <NSObject>
-@property(nonatomic,copy,nullable) void (^onReady)(void);
-- (void)configureWithRadius:(CGFloat)radius source:(UIView *)source excluded:(NSArray<UIView *> *)excluded;
-- (void)invalidateBackdrop;
-- (void)setRenderingActive:(BOOL)active;
+@protocol NGStaticDockComponent <NSObject>
+@property(nonatomic,readonly) BOOL hasStaticImage;
+- (void)setStaticRadius:(CGFloat)radius;
 @end
 NS_ASSUME_NONNULL_END

@@ -55,7 +55,11 @@ class Structure(unittest.TestCase):
         switch=bridge.split('@objc(NGClearDockView)')[0]
         self.assertNotRegex(switch,r'\.(?:layout|glassMaterial|onTintColor|offTintColor|thumbTintColor)\s*(?:\.[A-Za-z]+\s*)?=')
         self.assertIn('toggle.onValueChanged',switch); self.assertIn('setOn:animated:',switch)
-        self.assertIn('TheseusConfiguration.clear',bridge)
+        self.assertIn('TheseusConfiguration.clear',text('tests/Harness/NGDockBaker.swift'))
+        static=bridge.split('@objc(NGClearDockView)')[1]
+        self.assertRegex(static,r'class\s+NGClearDockView\s*:\s*UIView')
+        self.assertNotRegex(static,r'TheseusView\(|CADisplayLink|NSTimer|sourceView|captureSnapshot|CAGradientLayer')
+        self.assertIn('DockClearStatic',static)
         core='\n'.join(p.read_text() for p in (ROOT/'src').glob('*') if p.suffix in {'.m','.mm','.swift','.h'})
         self.assertNotRegex(core,r'glassStyle\s*=\s*\.iOS26|iosVersionOverride\s*=|tierOverride\s*=|refractionQualityOverride\s*=')
         self.assertNotRegex(core,r'UIFont|setFont:|\.font\s*=|\bappearance\s*\]|UIAppearance|DNToggleView|daynight')

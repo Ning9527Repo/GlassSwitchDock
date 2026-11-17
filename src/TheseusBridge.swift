@@ -35,60 +35,45 @@ final class NGTheseusSwitch: UIView {
     override func accessibilityActivate() -> Bool { toggle.accessibilityActivate() }
 }
 
+// A fixed image baked by the original Clear shader at BUILD time. This class
+// never creates TheseusView, Metal, a display link, a timer or a backdrop source.
 @objc(NGClearDockView)
-final class NGClearDockView: TheseusView {
-    @objc var onReady: (() -> Void)?
-    private var lastRadius: CGFloat = -1
-    private var lastSize: CGSize = .zero
-    private var active = true
+final class NGClearDockView: UIView {
+    private let imageView = UIImageView()
+    @objc var hasStaticImage: Bool { imageView.image != nil }
+    private static let fixedImage: UIImage? = {
+        var path = NGBundleResources()?.path(forResource: "DockClearStatic", ofType: "png")
+        #if NG_TESTING
+        if path == nil, let output = ProcessInfo.processInfo.environment["NG_TEST_OUTPUT"] {
+            path = (output as NSString).appendingPathComponent("DockClearStatic.png")
+        }
+        #endif
+        guard let path = path, let raw = UIImage(contentsOfFile: path), let cg = raw.cgImage else { return nil }
+        let image = UIImage(cgImage: cg, scale: 3, orientation: .up)
+        let cap = min(32, (image.size.width - 1) / 2)
+        return image.resizableImage(withCapInsets: UIEdgeInsets(top: cap, left: cap, bottom: cap, right: cap), resizingMode: .stretch)
+    }()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         isAccessibilityElement = false
-        providesCaptureSnapshot = true
-        continuousUpdate = false
         isOpaque = false
-        snapshotDidUpdate = { [weak self] in
-            guard let self = self, self.captureSnapshot != nil else { return }
-            self.onReady?()
-        }
+        backgroundColor = .clear
+        imageView.image = Self.fixedImage
+        imageView.contentMode = .scaleToFill
+        imageView.isUserInteractionEnabled = false
+        imageView.isAccessibilityElement = false
+        imageView.frame = bounds
+        imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(imageView)
     }
     required init?(coder: NSCoder) { return nil }
-
-    @objc(configureWithRadius:source:excluded:)
-    func configure(radius: CGFloat, source: UIView, excluded: [UIView]) {
-        if sourceView !== source { sourceView = source }
-        setCaptureExcludedViews(excluded)
-        if radius != lastRadius || lastSize != bounds.size {
-            lastRadius = radius
-            lastSize = bounds.size
-            var config = TheseusConfiguration.clear
-            config.captureMethod = TheseusCapability.isDeviceSupported ? .layerRendering : .surfaceBased
-            config.shape.cornerRadius = min(max(radius, 0.01), min(bounds.width, bounds.height) / 2)
-            // Clear has no external drop shadow. The Dock uses the system's
-            // exact bounds; no padded drawable is compressed into those bounds.
-            config.shape.padding = .zero
-            config.shape.widthInset = 0
-            config.shape.heightInset = 0
-            // Only capsule-shaped hosts take the original continuous capsule ends.
-            config.shape.continuousCapsule = config.shape.cornerRadius >= min(bounds.width, bounds.height) / 2 - 0.5
-            configuration = config
-            setNeedsLayout()
-        }
-        invalidateBackground()
-    }
-    @objc(invalidateBackdrop) func invalidateBackdrop() { invalidateBackground() }
-    @objc(setRenderingActive:) func setRenderingActive(_ value: Bool) {
-        active = value
-        if value && window != nil {
-            if !isRendering { resumeRendering() }
-            invalidateBackground()
-        } else { pauseRendering() }
-    }
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        setRenderingActive(active)
-        if window != nil, metalLayer == nil { onReady?() }
+    @objc(setStaticRadius:)
+    func setStaticRadius(_ value: CGFloat) {
+        let radius = min(max(value, 0.01), min(bounds.width, bounds.height) / 2)
+        if layer.cornerRadius != radius { layer.cornerRadius = radius }
+        layer.cornerCurve = .continuous
+        layer.masksToBounds = true
     }
 }

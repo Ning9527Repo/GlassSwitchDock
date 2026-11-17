@@ -175,6 +175,11 @@ class Build:
             self.run(self.tool('metallib')+[*air, '-o', bundle/'default.metallib'])
             (bundle/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': ident,
                  'CFBundleName': bundle.stem, 'CFBundlePackageType': 'BNDL', 'CFBundleVersion': CONFIG['version']}))
+        static = ROOT/'evidence/simulator-runtime/DockClearStatic.png'
+        if static.is_file():
+            shutil.copy2(static, destination/'DockClearStatic.png')
+        elif not self.smoke:
+            raise RuntimeError('Original Clear static image must be baked by simulator before production packaging')
         return destination
 
     def core(self):

@@ -58,7 +58,7 @@ static void NGDockRestore(NGDockBinding *binding) {
     if (!binding) return;
     [binding.timer invalidate]; binding.timer = nil;
     [binding.glass removeFromSuperview];
-    [binding.wallpaper removeFromSuperview];
+    [binding.wallpaper removeFromSuperview]; binding.wallpaper=nil;
     binding.background.alpha = binding.backgroundAlpha;
 }
 
@@ -69,8 +69,10 @@ void NGRemoveDock(UIView *dock) {
 }
 
 static void NGDockMarkReady(NGDockBinding *binding) {
-    if (!binding || !binding.dock.window || !binding.wallpaper.hasFrame || !NGDockEnabled() || binding.style != NGDockStyle()) return;
+    if (!binding || !binding.dock.window || !NGDockEnabled() || binding.style != NGDockStyle()) return;
     if (objc_getAssociatedObject(binding.dock,&kNGDockBindingKey) != binding) return;
+    if (binding.style==0 && ![(id<NGStaticDockComponent>)binding.glass hasStaticImage]) return;
+    if (binding.style==1 && !binding.wallpaper.hasFrame) return;
     if (!binding.ready) {
         binding.ready = YES;
         [binding.background.superview insertSubview:binding.glass aboveSubview:binding.background];
@@ -80,7 +82,7 @@ static void NGDockMarkReady(NGDockBinding *binding) {
 }
 
 static void NGDockUpdateBackdrop(NGDockBinding *binding, BOOL force) {
-    if (!binding || binding.updating) return;
+    if (!binding || binding.updating || binding.style==0) return;
     binding.updating=YES;
     @try {
     UIView *dock=binding.dock, *background=binding.background;
@@ -92,24 +94,16 @@ static void NGDockUpdateBackdrop(NGDockBinding *binding, BOOL force) {
         binding.glass.alpha=0;
         background.alpha=binding.backgroundAlpha;
         [background.superview insertSubview:binding.glass belowSubview:background];
-        if (binding.style==0) [(id<NGGlassComponent>)binding.glass setRenderingActive:NO];
         return;
     }
     binding.glass.alpha=binding.backgroundAlpha;
     if (!binding.ready) [background.superview insertSubview:binding.glass belowSubview:background];
-    if (binding.style==0) {
-        id<NGGlassComponent> component=(id)binding.glass;
-        [component configureWithRadius:binding.radius source:binding.wallpaper excluded:@[]];
-        [component setRenderingActive:YES];
-        [component invalidateBackdrop];
-    } else {
         GLSGlassView *glass=(GLSGlassView *)binding.glass;
         glass.cornerRadius=binding.radius;
         if (glass.backdropSourceView!=binding.wallpaper) glass.backdropSourceView=binding.wallpaper;
         [glass setNeedsBackdropUpdate];
         [glass layoutIfNeeded];
         if ([glass gls_surface].outputTexture) NGDockMarkReady(binding);
-    }
     } @finally { binding.updating=NO; }
 }
 
@@ -131,9 +125,6 @@ void NGRefreshDock(UIView *dock) {
         if (style == 0) {
             Class cls = NSClassFromString(@"NGClearDockView"); if (!cls) return;
             binding.glass = [[cls alloc] initWithFrame:frame];
-            [(id<NGGlassComponent>)binding.glass setRenderingActive:NO];
-            __weak NGDockBinding *weak = binding;
-            [(id<NGGlassComponent>)binding.glass setOnReady:^{ NGDockMarkReady(weak); }];
         } else {
             GLSGlassView *glass = [[GLSGlassView alloc] initWithFrame:frame];
             // Exact background configuration of the original Prominent Clear button.
@@ -150,6 +141,7 @@ void NGRefreshDock(UIView *dock) {
         binding.glass.isAccessibilityElement = NO;
         binding.glass.userInteractionEnabled = NO;
         objc_setAssociatedObject(dock,&kNGDockBindingKey,binding,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (style==1) {
         binding.wallpaper=[[NGWallpaperBackdrop alloc] initWithFrame:CGRectZero];
         [background.superview insertSubview:binding.wallpaper belowSubview:background];
         binding.glass.alpha=0;
@@ -163,6 +155,7 @@ void NGRefreshDock(UIView *dock) {
             NGDockUpdateBackdrop(b,NO);
         }];
         [NSRunLoop.mainRunLoop addTimer:binding.timer forMode:NSRunLoopCommonModes];
+        }
     }
     UIView *glass = binding.glass;
     if (glass.superview != background.superview) { [glass removeFromSuperview]; [background.superview insertSubview:glass aboveSubview:background]; }
@@ -175,6 +168,11 @@ void NGRefreshDock(UIView *dock) {
     radius = MIN(radius,MIN(CGRectGetWidth(background.bounds),CGRectGetHeight(background.bounds))/2);
     binding.radius=radius;
     glass.hidden=background.hidden;
+    if (style==0) {
+        [(id<NGStaticDockComponent>)glass setStaticRadius:radius];
+        NGDockMarkReady(binding);
+        return; // Static image path: no wallpaper, timer, renderer or snapshot.
+    }
     if (binding.wallpaper.superview!=background.superview) {
         [binding.wallpaper removeFromSuperview];
         [background.superview insertSubview:binding.wallpaper belowSubview:background];

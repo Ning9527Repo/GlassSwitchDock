@@ -1,11 +1,10 @@
 #import "NGHarness.h"
 
 static BOOL NGComponentOn(UIView *component, NSInteger style) {
-    return style == 0 ? [[NGTheseusProbe inspectSwitch:component][@"isOn"] boolValue] : NGReadOn(component);
+    return [[NGTheseusProbe inspectSwitch:component][@"isOn"] boolValue];
 }
 static BOOL NGInteract(UIView *component, NSInteger style, BOOL drag, BOOL on) {
-    return style == 0 ? (drag ? [NGTheseusProbe drag:component toOn:on] : [NGTheseusProbe activate:component])
-                      : NGGlassifyUserInteraction((GLSSwitch *)component, drag, on);
+    return drag ? [NGTheseusProbe drag:component toOn:on] : [NGTheseusProbe activate:component];
 }
 static NSDictionary *NGState(UISwitch *source, UIView *component, NSInteger style, NGEventSpy *spy) {
     return @{@"sourceOn": @(source.on), @"componentOn": @(component && NGComponentOn(component, style)),
@@ -15,7 +14,7 @@ static NSDictionary *NGState(UISwitch *source, UIView *component, NSInteger styl
              @"componentClass": component ? NSStringFromClass(component.class) : @"missing"};
 }
 static NSString *NGID(NSInteger style, NSString *name) {
-    return [NSString stringWithFormat:@"switch.%@.%@", style == 0 ? @"theseus" : @"glassify", name];
+    return [NSString stringWithFormat:@"switch.%@.%@", @"theseus", name];
 }
 
 void NGRunSwitchTests(NGRecorder *r, UIView *root) {
@@ -31,11 +30,12 @@ void NGRunSwitchTests(NGRecorder *r, UIView *root) {
     [b addTarget:spyB action:@selector(changed:) forControlEvents:UIControlEventValueChanged];
     [unrelated addTarget:spyOther action:@selector(changed:) forControlEvents:UIControlEventValueChanged];
     a.accessibilityLabel = @"Primary fixture switch";
-    for (NSInteger style = 0; style <= 1; style++) {
-        NGWritePreferences(NO, style, NO, 0); NGRefreshSwitch(a); NGRefreshSwitch(b);
+    BOOL initialAccessibility = a.isAccessibilityElement;
+    for (NSInteger style = 0; style == 0; style++) {
+        NGWritePreferences(NO, NO, 0); NGRefreshSwitch(a); NGRefreshSwitch(b);
         [a setOn:NO animated:NO]; [b setOn:YES animated:NO]; [unrelated setOn:NO animated:NO];
         spyA.count = 0; [spyA.values removeAllObjects]; spyB.count = 0; spyOther.count = 0;
-        NGWritePreferences(YES, style, NO, 0); NGRefreshSwitch(a); NGRefreshSwitch(b); NGPump(0.12);
+        NGWritePreferences(YES, NO, 0); NGRefreshSwitch(a); NGRefreshSwitch(b); NGPump(0.12);
         UIView *component = NGSwitchComponent(a, fixture, style);
         UIView *second = NGSwitchComponent(b, fixture, style);
         [r check:component && second && component != second && NGOriginalSwitches(fixture).count == 2
@@ -56,12 +56,6 @@ void NGRunSwitchTests(NGRecorder *r, UIView *root) {
                      ([wrapper respondsToSelector:@selector(isOn)] || [wrapper respondsToSelector:NSSelectorFromString(@"on")])
                    name:NGID(style, @"uiview_bridge_contract")
                evidence:@{@"wrapperClass": wrapper ? NSStringFromClass(wrapper.class) : @"missing"}];
-        } else {
-            GLSSwitch *glass = (GLSSwitch *)component;
-            [r check:!glass.onTintColor && !glass.thumbTintColor && glass.intrinsicContentSize.width == 61 && glass.intrinsicContentSize.height == 28
-                   name:NGID(style, @"original_defaults")
-               evidence:@{@"onTint": glass.onTintColor.description ?: @"nil", @"thumbTint": glass.thumbTintColor.description ?: @"nil",
-                          @"intrinsicWidth": @(glass.intrinsicContentSize.width), @"intrinsicHeight": @(glass.intrinsicContentSize.height)}];
         }
         [r check:fabs(component.bounds.size.width-63) < 0.01 && fabs(component.bounds.size.height-28) < 0.01 && CGAffineTransformIsIdentity(component.transform)
                name:NGID(style, @"original_size_63x28")
@@ -90,7 +84,6 @@ void NGRunSwitchTests(NGRecorder *r, UIView *root) {
         BOOL componentDisabled = !component || ([component isKindOfClass:UIControl.class] && !((UIControl *)component).enabled);
         BOOL attempted = NO;
         if (component && style == 0) attempted = [NGTheseusProbe activate:component];
-        else if (component) attempted = NGGlassifyUserInteraction((GLSSwitch *)component, NO, !before);
         [r check:componentDisabled && !attempted && a.on == before && spyA.count == eventsBefore
                name:NGID(style, @"disabled_ignores_user_input") evidence:NGState(a, component, style, spyA)];
         a.enabled = YES; NGRefreshSwitch(a); component = NGSwitchComponent(a, fixture, style);
@@ -98,14 +91,15 @@ void NGRunSwitchTests(NGRecorder *r, UIView *root) {
         [r capture:root name:NGID(style, @"render_off")];
         [a setOn:YES animated:NO]; NGRefreshSwitch(a); NGPump(0.25);
         [r capture:root name:NGID(style, @"render_on")];
-        // Replace a live style while retaining logical source state, not old view identity.
-        NSInteger replacement = 1 - style;
+        // Re-enable the sole original control while preserving source state.
+        NSInteger replacement = 0;
         __weak UIView *oldComponent = component;
-        NGWritePreferences(YES, replacement, NO, 0); NGRefreshSwitch(a); NGRefreshSwitch(b); NGPump(0.1);
+        NGWritePreferences(NO, NO, 0); NGRefreshSwitch(a); NGRefreshSwitch(b); NGPump(0.05);
+        NGWritePreferences(YES, NO, 0); NGRefreshSwitch(a); NGRefreshSwitch(b); NGPump(0.1);
         UIView *newComponent = NGSwitchComponent(a, fixture, replacement);
         [r check:newComponent && a.on && NGComponentOn(newComponent, replacement) &&
                  (!oldComponent || !oldComponent.window) && NGOriginalSwitches(fixture).count == 2 && spyA.count == eventsBefore
-               name:NGID(style, @"style_change_detaches_old_preserves_state")
+               name:NGID(style, @"reenable_detaches_old_preserves_state")
            evidence:@{@"newClass": newComponent ? NSStringFromClass(newComponent.class) : @"missing", @"count": @(NGOriginalSwitches(fixture).count),
                       @"oldInWindow": @(oldComponent.window != nil), @"sourceOn": @(a.on), @"events": @(spyA.count)}];
         for (NSUInteger i = 0; i < 12; i++) NGRefreshSwitch(a);
@@ -125,20 +119,20 @@ void NGRunSwitchTests(NGRecorder *r, UIView *root) {
            evidence:@{@"oldParentComponents": @(NGOriginalSwitches(otherParent).count)}];
         [fixture addSubview:a]; a.frame = CGRectMake(22, 18, 63, 28); NGRefreshSwitch(a);
         [otherParent removeFromSuperview];
-        NGWritePreferences(NO, style, NO, 0); NGRefreshSwitch(a); NGRefreshSwitch(b); NGPump(0.05);
-        [r check:NGOriginalSwitches(fixture).count == 0 && fabs(a.alpha-1) < 0.001 && a.userInteractionEnabled && a.isAccessibilityElement && a.on
+        NGWritePreferences(NO, NO, 0); NGRefreshSwitch(a); NGRefreshSwitch(b); NGPump(0.05);
+        [r check:NGOriginalSwitches(fixture).count == 0 && fabs(a.alpha-1) < 0.001 && a.userInteractionEnabled && a.isAccessibilityElement == initialAccessibility && a.on
                name:NGID(style, @"disable_restores_native_state")
            evidence:@{@"overlays": @(NGOriginalSwitches(fixture).count), @"alpha": @(a.alpha),
                       @"interaction": @(a.userInteractionEnabled), @"accessibilityElement": @(a.isAccessibilityElement), @"on": @(a.on)}];
         // Regression: original non-default host properties must survive installation/removal.
         a.alpha = 0.37; a.userInteractionEnabled = NO; a.isAccessibilityElement = NO;
-        NGWritePreferences(YES, style, NO, 0); NGRefreshSwitch(a); NGPump(0.04);
-        NGWritePreferences(NO, style, NO, 0); NGRefreshSwitch(a); NGPump(0.04);
+        NGWritePreferences(YES, NO, 0); NGRefreshSwitch(a); NGPump(0.04);
+        NGWritePreferences(NO, NO, 0); NGRefreshSwitch(a); NGPump(0.04);
         [r check:fabs(a.alpha-0.37) < 0.001 && !a.userInteractionEnabled && !a.isAccessibilityElement
                name:NGID(style, @"restore_saved_nondefault_host_properties")
            evidence:@{@"alpha": @(a.alpha), @"interaction": @(a.userInteractionEnabled), @"accessibilityElement": @(a.isAccessibilityElement)}];
         a.alpha = 1; a.userInteractionEnabled = YES; a.isAccessibilityElement = YES;
     }
-    NGWritePreferences(NO, 0, NO, 0); NGRemoveSwitch(a); NGRemoveSwitch(b);
+    NGWritePreferences(NO, NO, 0); NGRemoveSwitch(a); NGRemoveSwitch(b);
     [fixture removeFromSuperview];
 }

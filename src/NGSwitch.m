@@ -1,7 +1,6 @@
 #import "Bridge.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
-#import <Glassify/GLSSwitch.h>
 
 static char kNGBindingKey;
 static NSHashTable<UISwitch *> *NGSeenSwitches(void) {
@@ -12,18 +11,15 @@ static NSHashTable<UISwitch *> *NGSeenSwitches(void) {
 @interface NGSwitchBinding : NSObject
 @property(nonatomic,weak) UISwitch *source;
 @property(nonatomic,strong) UIView *overlay;
-@property(nonatomic) NSInteger style;
 @property(nonatomic) CGFloat originalAlpha;
 @property(nonatomic) BOOL originalAccessibility;
 @property(nonatomic) BOOL forwarding;
 @property(nonatomic) BOOL modifyingNative;
-- (void)changed:(UIControl *)sender;
 - (void)commit:(BOOL)value;
 @end
 
 @implementation NGSwitchBinding
 - (void)dealloc { [_overlay removeFromSuperview]; }
-- (void)changed:(UIControl *)sender { [self commit:((GLSSwitch *)sender).isOn]; }
 - (void)commit:(BOOL)value {
     UISwitch *source = self.source;
     if (!source || !source.enabled || !source.userInteractionEnabled || self.forwarding || !NGSwitchEnabled() || self.overlay.hidden) return;
@@ -40,16 +36,10 @@ static NSHashTable<UISwitch *> *NGSeenSwitches(void) {
 void NGSyncSwitch(UISwitch *source, BOOL animated) {
     NGSwitchBinding *binding = objc_getAssociatedObject(source, &kNGBindingKey);
     if (!binding || binding.forwarding) return;
-    if (binding.style == 0) {
-        id<NGSwitchComponent> component = (id)binding.overlay;
-        if ([(id)component isOn] != source.isOn) [component setOn:source.isOn animated:animated];
-        SEL enabled = NSSelectorFromString(@"setControlEnabled:");
-        if ([binding.overlay respondsToSelector:enabled]) ((void(*)(id,SEL,BOOL))objc_msgSend)(binding.overlay,enabled,source.enabled);
-    } else {
-        GLSSwitch *component = (GLSSwitch *)binding.overlay;
-        if (component.isOn != source.isOn) [component setOn:source.isOn animated:animated];
-        component.enabled = source.enabled;
-    }
+    id<NGSwitchComponent> component = (id)binding.overlay;
+    if ([(id)component isOn] != source.isOn) [component setOn:source.isOn animated:animated];
+    SEL enabled = NSSelectorFromString(@"setControlEnabled:");
+    if ([binding.overlay respondsToSelector:enabled]) ((void(*)(id,SEL,BOOL))objc_msgSend)(binding.overlay,enabled,source.enabled);
     binding.overlay.accessibilityLabel = source.accessibilityLabel;
 }
 
@@ -66,30 +56,22 @@ void NGRefreshSwitch(UISwitch *source) {
     if (!NSThread.isMainThread || ![source isKindOfClass:UISwitch.class]) return;
     [NGSeenSwitches() addObject:source];
     if (!NGSwitchEnabled() || !source.superview || !source.window || CGRectIsEmpty(source.bounds)) { NGRemoveSwitch(source); return; }
-    NSInteger style = NGSwitchStyle();
     NGSwitchBinding *binding = objc_getAssociatedObject(source,&kNGBindingKey);
-    if (binding && binding.style != style) { NGRemoveSwitch(source); binding = nil; }
     if (!binding) {
         if (!NGBundleResources()) return; // Do not hide a working native control if resources are missing.
-        binding = [NGSwitchBinding new]; binding.source = source; binding.style = style;
+        binding = [NGSwitchBinding new]; binding.source = source;
         binding.originalAlpha = source.alpha; binding.originalAccessibility = source.isAccessibilityElement;
-        if (style == 0) {
-            Class component = NSClassFromString(@"NGTheseusSwitch"); if (!component) return;
-            binding.overlay = [[component alloc] initWithFrame:CGRectMake(0,0,63,28)];
-            __weak NGSwitchBinding *weak = binding;
-            [(id<NGSwitchComponent>)binding.overlay setOnChanged:^(BOOL value) { [weak commit:value]; }];
-        } else {
-            GLSSwitch *component = [[GLSSwitch alloc] initWithFrame:CGRectMake(0,0,63,28)];
-            [component addTarget:binding action:@selector(changed:) forControlEvents:UIControlEventValueChanged];
-            binding.overlay = component;
-        }
+        Class component = NSClassFromString(@"NGTheseusSwitch"); if (!component) return;
+        binding.overlay = [[component alloc] initWithFrame:CGRectMake(0,0,63,28)];
+        __weak NGSwitchBinding *weak = binding;
+        [(id<NGSwitchComponent>)binding.overlay setOnChanged:^(BOOL value) { [weak commit:value]; }];
         binding.overlay.accessibilityIdentifier = @"NGSwitchOverlay";
         binding.overlay.clipsToBounds = NO;
         objc_setAssociatedObject(source,&kNGBindingKey,binding,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     UIView *parent = source.superview;
     if (binding.overlay.superview != parent) { [binding.overlay removeFromSuperview]; [parent insertSubview:binding.overlay aboveSubview:source]; }
-    // Both original controls draw a 63 x 28 track. No scale transform or Layout override.
+    // Preserve the original Theseus 63 x 28 track and Layout defaults.
     CGSize size = CGSizeMake(63,28);
     CGPoint center = [source convertPoint:CGPointMake(CGRectGetMidX(source.bounds),CGRectGetMidY(source.bounds)) toView:parent];
     binding.overlay.bounds = (CGRect){CGPointZero,size}; binding.overlay.center = center;

@@ -9,7 +9,6 @@ FOUNDATION_EXPORT NSDictionary *NGReadPreferences(void);
 FOUNDATION_EXPORT BOOL NGStorePreference(NSString *key, id value);
 FOUNDATION_EXPORT void NGPreferencesReload(void);
 FOUNDATION_EXPORT BOOL NGSwitchEnabled(void);
-FOUNDATION_EXPORT NSInteger NGSwitchStyle(void);
 FOUNDATION_EXPORT BOOL NGDockEnabled(void);
 FOUNDATION_EXPORT NSInteger NGDockStyle(void);
 FOUNDATION_EXPORT void NGRefreshSwitch(UISwitch *source);

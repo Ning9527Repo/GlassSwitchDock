@@ -2,9 +2,17 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <Glassify/GLSGlassView.h>
-#import "GLSGlassViewInternal.h"
-#import "GLSBackdrop.h"
-#include <initializer_list>
+#import <Metal/Metal.h>
+#import "NGWallpaperBackdrop.h"
+
+// The exact Objective-C accessors from the original GLSGlassSurface header.
+@protocol NGDockSurface <NSObject>
+@property(nonatomic) BOOL keepsOutput;
+@property(nonatomic,readonly) id<MTLTexture> outputTexture;
+@end
+@interface GLSGlassView (NGDockCapture)
+- (id<NGDockSurface>)gls_surface;
+@end
 
 static char kNGDockBindingKey;
 static NSHashTable<UIView *> *NGSeenDocks(void) {
@@ -21,8 +29,8 @@ static UIView *NGDockBackground(UIView *dock) {
             if ([object isKindOfClass:UIView.class] && object != dock) return object;
         }
     }
-    for (const char *name : {"_backgroundView", "_backgroundMaterialView"}) {
-        Ivar ivar = class_getInstanceVariable(dock.class,name);
+    for (NSString *name in @[@"_backgroundView", @"_backgroundMaterialView"]) {
+        Ivar ivar = class_getInstanceVariable(dock.class,name.UTF8String);
         if (ivar && ivar_getTypeEncoding(ivar)[0] == '@') {
             id object = object_getIvar(dock,ivar);
             if ([object isKindOfClass:UIView.class] && object != dock) return object;
@@ -35,9 +43,12 @@ static UIView *NGDockBackground(UIView *dock) {
 @property(nonatomic,weak) UIView *dock;
 @property(nonatomic,weak) UIView *background;
 @property(nonatomic,strong) UIView *glass;
+@property(nonatomic,strong) NGWallpaperBackdrop *wallpaper;
+@property(nonatomic) CGFloat radius;
 @property(nonatomic) CGFloat backgroundAlpha;
 @property(nonatomic) NSInteger style;
 @property(nonatomic) BOOL ready;
+@property(nonatomic) BOOL updating;
 @property(nonatomic,strong) NSTimer *timer;
 @end
 @implementation NGDockBinding
@@ -46,8 +57,8 @@ static UIView *NGDockBackground(UIView *dock) {
 static void NGDockRestore(NGDockBinding *binding) {
     if (!binding) return;
     [binding.timer invalidate]; binding.timer = nil;
-    [GLSBackdrop unregisterGlassView:binding.dock];
     [binding.glass removeFromSuperview];
+    [binding.wallpaper removeFromSuperview];
     binding.background.alpha = binding.backgroundAlpha;
 }
 
@@ -58,36 +69,48 @@ void NGRemoveDock(UIView *dock) {
 }
 
 static void NGDockMarkReady(NGDockBinding *binding) {
-    if (!binding || !binding.dock.window || !NGDockEnabled() || binding.style != NGDockStyle()) return;
-    binding.ready = YES;
+    if (!binding || !binding.dock.window || !binding.wallpaper.hasFrame || !NGDockEnabled() || binding.style != NGDockStyle()) return;
+    if (objc_getAssociatedObject(binding.dock,&kNGDockBindingKey) != binding) return;
+    if (!binding.ready) {
+        binding.ready = YES;
+        [binding.background.superview insertSubview:binding.glass aboveSubview:binding.background];
+    }
     binding.background.alpha = 0;
     binding.glass.alpha = binding.backgroundAlpha;
 }
 
-static UIView *NGWallpaperSource(UIView *root, UIView *dock) {
-    // A separate wallpaper subtree avoids capturing either the dock icons or
-    // this plug-in's own background, and never changes icon layout/appearance.
-    if (!root || root == dock || root.hidden || root.alpha < 0.01) return nil;
-    NSString *name = NSStringFromClass(root.class);
-    if ([name containsString:@"Wallpaper"] && root.bounds.size.width > 100 && root.bounds.size.height > 100) return root;
-    for (UIView *child in root.subviews) {
-        UIView *found = NGWallpaperSource(child,dock); if (found) return found;
+static void NGDockUpdateBackdrop(NGDockBinding *binding, BOOL force) {
+    if (!binding || binding.updating) return;
+    binding.updating=YES;
+    @try {
+    UIView *dock=binding.dock, *background=binding.background;
+    BOOL visible=dock.window && !dock.hidden && !background.hidden;
+    for (UIView *p=dock.superview;p && visible;p=p.superview) visible=!p.hidden && p.alpha>0.01;
+    BOOL valid=visible && [binding.wallpaper updateForDock:dock background:background force:force];
+    if (!valid) {
+        binding.ready=NO;
+        binding.glass.alpha=0;
+        background.alpha=binding.backgroundAlpha;
+        [background.superview insertSubview:binding.glass belowSubview:background];
+        if (binding.style==0) [(id<NGGlassComponent>)binding.glass setRenderingActive:NO];
+        return;
     }
-    return nil;
-}
-
-static UIView *NGDockSource(UIView *dock) {
-#ifdef NG_TESTING
-    return dock.window.rootViewController.view ?: dock.window;
-#endif
-    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class]) continue;
-        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-            UIView *wallpaper = NGWallpaperSource(window.rootViewController.view ?: window,dock);
-            if (wallpaper) return wallpaper;
-        }
+    binding.glass.alpha=binding.backgroundAlpha;
+    if (!binding.ready) [background.superview insertSubview:binding.glass belowSubview:background];
+    if (binding.style==0) {
+        id<NGGlassComponent> component=(id)binding.glass;
+        [component configureWithRadius:binding.radius source:binding.wallpaper excluded:@[]];
+        [component setRenderingActive:YES];
+        [component invalidateBackdrop];
+    } else {
+        GLSGlassView *glass=(GLSGlassView *)binding.glass;
+        glass.cornerRadius=binding.radius;
+        if (glass.backdropSourceView!=binding.wallpaper) glass.backdropSourceView=binding.wallpaper;
+        [glass setNeedsBackdropUpdate];
+        [glass layoutIfNeeded];
+        if ([glass gls_surface].outputTexture) NGDockMarkReady(binding);
     }
-    return dock.window.rootViewController.view ?: dock.window;
+    } @finally { binding.updating=NO; }
 }
 
 void NGRefreshDock(UIView *dock) {
@@ -97,6 +120,7 @@ void NGRefreshDock(UIView *dock) {
     UIView *background = NGDockBackground(dock);
     if (!background.superview || ![background isDescendantOfView:dock] || CGRectIsEmpty(background.bounds)) return;
     NGDockBinding *binding = objc_getAssociatedObject(dock,&kNGDockBindingKey);
+    if (binding.updating) return;
     NSInteger style = NGDockStyle();
     if (binding && (binding.background != background || binding.style != style)) { NGRemoveDock(dock); binding = nil; }
     if (!binding) {
@@ -107,6 +131,7 @@ void NGRefreshDock(UIView *dock) {
         if (style == 0) {
             Class cls = NSClassFromString(@"NGClearDockView"); if (!cls) return;
             binding.glass = [[cls alloc] initWithFrame:frame];
+            [(id<NGGlassComponent>)binding.glass setRenderingActive:NO];
             __weak NGDockBinding *weak = binding;
             [(id<NGGlassComponent>)binding.glass setOnReady:^{ NGDockMarkReady(weak); }];
         } else {
@@ -125,6 +150,9 @@ void NGRefreshDock(UIView *dock) {
         binding.glass.isAccessibilityElement = NO;
         binding.glass.userInteractionEnabled = NO;
         objc_setAssociatedObject(dock,&kNGDockBindingKey,binding,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        binding.wallpaper=[[NGWallpaperBackdrop alloc] initWithFrame:CGRectZero];
+        [background.superview insertSubview:binding.wallpaper belowSubview:background];
+        binding.glass.alpha=0;
         [background.superview insertSubview:binding.glass aboveSubview:background];
         __weak NGDockBinding *weak = binding;
         binding.timer = [NSTimer timerWithTimeInterval:1.0/15.0 repeats:YES block:^(NSTimer *timer) {
@@ -132,17 +160,7 @@ void NGRefreshDock(UIView *dock) {
             UIView *host = b.dock;
             if (!b || !host || !host.window) { [timer invalidate]; return; }
             if (!NGDockEnabled() || b.style != NGDockStyle()) { NGRefreshDock(host); return; }
-            BOOL visible = !host.hidden && !b.background.hidden;
-            for (UIView *p = host.superview; p && visible; p = p.superview) visible = !p.hidden && p.alpha > 0.01;
-            if (b.style == 0) {
-                id<NGGlassComponent> component = (id)b.glass;
-                [component setRenderingActive:visible];
-                if (visible) [component invalidateBackdrop];
-            } else if (visible) {
-                GLSGlassView *component = (GLSGlassView *)b.glass;
-                [component setNeedsBackdropUpdate];
-                if ([component gls_surface].outputTexture) NGDockMarkReady(b);
-            }
+            NGDockUpdateBackdrop(b,NO);
         }];
         [NSRunLoop.mainRunLoop addTimer:binding.timer forMode:NSRunLoopCommonModes];
     }
@@ -155,22 +173,14 @@ void NGRefreshDock(UIView *dock) {
     }
     if (radius <= 0) radius = MIN(CGRectGetWidth(background.bounds),CGRectGetHeight(background.bounds))/2;
     radius = MIN(radius,MIN(CGRectGetWidth(background.bounds),CGRectGetHeight(background.bounds))/2);
-    UIView *source = NGDockSource(dock);
-    glass.hidden = background.hidden;
-    if (style == 0) {
-        [(id<NGGlassComponent>)glass configureWithRadius:radius source:source excluded:@[dock]];
-        [(id<NGGlassComponent>)glass setRenderingActive:!dock.hidden && !background.hidden];
-    } else {
-        GLSGlassView *g = (GLSGlassView *)glass;
-        g.cornerRadius = radius;
-        g.backdropSourceView = source;
-        // Glassify's own snapshot registry excludes the entire icon subtree.
-        [GLSBackdrop registerGlassView:dock];
-        [g setNeedsBackdropUpdate];
-        [g layoutIfNeeded];
-        if ([g gls_surface].outputTexture) NGDockMarkReady(binding);
+    binding.radius=radius;
+    glass.hidden=background.hidden;
+    if (binding.wallpaper.superview!=background.superview) {
+        [binding.wallpaper removeFromSuperview];
+        [background.superview insertSubview:binding.wallpaper belowSubview:background];
     }
-    if (binding.ready) { background.alpha = 0; glass.alpha = binding.backgroundAlpha; }
+    NGDockUpdateBackdrop(binding,YES);
+    if (binding.ready && binding.wallpaper.hasFrame) { background.alpha=0; glass.alpha=binding.backgroundAlpha; }
 }
 
 void NGRefreshDocks(void) {

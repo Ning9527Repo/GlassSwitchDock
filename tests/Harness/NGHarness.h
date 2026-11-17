@@ -3,7 +3,6 @@
 #import <QuartzCore/QuartzCore.h>
 #import <Foundation/Foundation.h>
 #import "Bridge.h"
-#import <Glassify/GLSSwitch.h>
 #import <Glassify/GLSGlassView.h>
 
 // Declared separately to avoid depending on generated Swift header visibility.
@@ -49,9 +48,8 @@ FOUNDATION_EXPORT NSArray<UIView *> *NGOriginalSwitches(UIView *root);
 FOUNDATION_EXPORT UIView *NGSwitchComponent(UISwitch *source, UIView *scope, NSInteger style);
 FOUNDATION_EXPORT void NGPump(NSTimeInterval seconds);
 FOUNDATION_EXPORT BOOL NGReadOn(id control);
-FOUNDATION_EXPORT void NGWritePreferences(BOOL enabledSwitch, NSInteger switchStyle, BOOL enabledDock, NSInteger dockStyle);
+FOUNDATION_EXPORT void NGWritePreferences(BOOL enabledSwitch, BOOL enabledDock, NSInteger dockStyle);
 FOUNDATION_EXPORT void NGRunSwitchTests(NGRecorder *recorder, UIView *root);
-FOUNDATION_EXPORT void NGRunDockTests(NGRecorder *recorder, UIView *root);
+FOUNDATION_EXPORT void NGRunDockTests(NGRecorder *recorder, UIView *root, dispatch_block_t completion);
 FOUNDATION_EXPORT void NGRunResourceTests(NGRecorder *recorder);
-FOUNDATION_EXPORT BOOL NGGlassifyUserInteraction(GLSSwitch *control, BOOL drag, BOOL targetOn);
 FOUNDATION_EXPORT void NGRefreshFixtureDock(UIView *dock);

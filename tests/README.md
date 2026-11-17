@@ -7,7 +7,7 @@ python3 tools/test-local.py
 bash -n tests/run-simulator.sh
 ```
 
-`tests/evidence/local-report.json` records executed checks, source digests and explicitly `nativeUIKit.executed=false`. The portable suite verifies every original vendor byte against the pinned manifest, separately pins Theseus `71ca1c127a4e7fe3387361f160c4890dbd427f66` and Glassify `a8e52aa9c015502fb68d5f81687698f11df6977d`, enforces 33 original Swift + 1 Metal / 4 C++ + 16 ObjC++ implementations, the one-domain four-setting schema, original switch defaults, absence of demo UI/global typography/style overrides and test/runtime interfaces. Four negative tests prove the native-report validator rejects an empty success, failed assertions, duplicate checks, missing screenshots and unchanged GPU evidence. Metadata UPSTREAM.json files are separately revision-pinned; they are not represented as upstream release bytes.
+`tests/evidence/local-report.json` records executed checks, source digests and explicitly `nativeUIKit.executed=false`. The portable suite verifies every original vendor byte against the pinned manifest, separately pins Theseus `71ca1c127a4e7fe3387361f160c4890dbd427f66` and Glassify `a8e52aa9c015502fb68d5f81687698f11df6977d`, enforces 33 original Swift + 1 Metal / 4 C++ + 16 archived original ObjC++ implementations (15 compiled; GLSSwitch.mm excluded), the one-domain three-setting schema, original switch defaults, absence of demo UI/global typography/style overrides and test/runtime interfaces. Four negative tests prove the native-report validator rejects an empty success, failed assertions, duplicate checks, missing screenshots and unchanged GPU evidence. Metadata UPSTREAM.json files are separately revision-pinned; they are not represented as upstream release bytes.
 
 On a local Mac with full Xcode and an available iOS Simulator:
 
@@ -24,11 +24,11 @@ Use `--device booted` only when exactly one Simulator is booted. The runner boot
 
 Native assertions cover:
 
-- Original TheseusSwitch child inside the UIView NGTheseusSwitch bridge; direct original GLSSwitch sibling; 63×28 defaults, no transform/default color/material/layout changes.
-- Windowed native UISwitch state and six programmatic sync transitions without callbacks; true Theseus accessibility activation plus shipped scripted drag; real GLSSwitch tracking press/drag with synthetic UITouch; exactly one native valueChanged per user change and unrelated controls unchanged.
-- Enabled/disabled states, repeated refresh, both style directions, retained state, sibling detachment/reparenting, and restoration of native alpha/interaction/accessibility including nondefault host values.
+- Original TheseusSwitch child inside the UIView NGTheseusSwitch bridge; 63×28 defaults, no transform/default color/material/layout changes.
+- Windowed native UISwitch state and six programmatic sync transitions without callbacks; true Theseus accessibility activation plus shipped scripted drag; exactly one native valueChanged per user change and unrelated controls unchanged.
+- Enabled/disabled states, repeated refresh, disable/re-enable transitions, retained state, sibling detachment/reparenting, and restoration of native alpha/interaction/accessibility including nondefault host values.
 - Real root and nested metallib loading, shader lookup and render/compute pipeline construction. The original `gls_downsample13` kernel executes on the Simulator Metal device and its output is read back against known RGBA values. Unavailable Metal/resources or static fallback fails the suite.
-- Both synthetic SBDockView and SBFloatingDockPlatterView backgrounds: Theseus Clear's full optical preset and live Metal backend, Glassify's exact Clear + secondarySystemFillColor configuration, no labels/sliders/control children, no intercepting icon hit tests, one material per dock and background restoration. Pattern changes must change the original GPU output checksums. Eight GPU PNGs and eight UIKit screenshots are produced in addition to simulator-screen.png.
+- Both synthetic SBDockView and SBFloatingDockPlatterView backgrounds: Theseus Clear's full optical preset and live Metal backend, Glassify's exact Clear + secondarySystemFillColor configuration, no labels/sliders/control children, no intercepting icon hit tests, one material per dock and background restoration. Pattern changes must change the original GPU output checksums. Eight GPU PNGs and six UIKit screenshots are produced in addition to simulator-screen.png.
 
 `report.json` records assertion evidence, class identities, event counts and values, original/current optical fingerprints, shader names, actual texture readbacks and screenshot filenames. CI should treat the runner's exit code as mandatory; it internally executes:
 

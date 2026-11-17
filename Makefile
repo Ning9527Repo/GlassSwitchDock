@@ -1,5 +1,5 @@
 PYTHON ?= python3
-ARCH ?= all
+ARCH ?= arm64e
 
 .PHONY: all build check verify smoke smoke-core infra-check clean
 all: build

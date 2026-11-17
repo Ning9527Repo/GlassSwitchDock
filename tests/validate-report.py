@@ -8,12 +8,13 @@ import sys
 SWITCH = ('original_identity','original_defaults','original_size_63x28','initial_sync_silent',
           'user_tap_exactly_one_native_event','unrelated_controls_unchanged',
           'drag_commits_exactly_one_native_event','disabled_ignores_user_input','reenabled',
-          'style_change_detaches_old_preserves_state','refresh_is_idempotent',
+          'reenable_detaches_old_preserves_state','refresh_is_idempotent',
           'reparent_removes_old_sibling','source_detach_removes_overlay',
           'disable_restores_native_state','restore_saved_nondefault_host_properties')
 DOCK = ('actual_original_material','exact_original_clear_optics','container_geometry_only',
         'actual_metal_backend_no_fallback','material_has_no_labels_sliders_or_touch_interception',
-        'dock_icon_hit_test_preserved','backdrop_change_changes_real_gpu_pixels','refresh_idempotent')
+        'dock_icon_hit_test_preserved','backdrop_change_changes_real_gpu_pixels','refresh_idempotent',
+        'wallpaper_only_valid_frame','server_wallpaper_fixture','invalid_wallpaper_retains_native_background')
 
 def validate(path):
     path = Path(path); report = json.loads(path.read_text()); errors = []
@@ -29,7 +30,7 @@ def validate(path):
                 'theseus.no_global_style_quality_or_accessibility_side_effects','resource.metal_device_required',
                 'resource.theseus.load_original_metallib','resource.glassify.load_original_metallib',
                 'resource.glassify.actual_shader_execution_readback','resource.glassify.actual_renderer_initializes'}
-    for style in ('theseus','glassify'):
+    for style in ('theseus',):
         required.update('switch.'+style+'.'+v for v in SWITCH)
         required.update('switch.'+style+'.programmatic_sync_'+str(i) for i in range(6))
         required.update('screenshot.switch.'+style+'.render_'+v for v in ('on','off'))

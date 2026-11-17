@@ -2,16 +2,17 @@
 
 One jailbreak tweak, one package identifier `com.ning.glassswitchdock`, and one PreferenceLoader entry. The package contains both switch replacement and desktop Dock background material. No separate engine package is required.
 
-Exactly four settings:
+Exactly three settings:
 
-1. 启用开关 — enabled by default.
-2. 开关样式 — original Theseus (default) or original Glassify.
-3. 启用 Dock 玻璃 — enabled by default.
-4. Dock 玻璃样式 — Theseus Clear (default) or Glassify Prominent Clear.
+1. 启用开关 — original Theseus, enabled by default.
+2. 启用 Dock 玻璃 — enabled by default.
+3. Dock 玻璃样式 — Theseus Clear (default) or Glassify Prominent Clear.
 
-The two switch implementations, their dimensions, materials, colours and animation/physics defaults are unmodified upstream sources. A sibling overlay keeps their original 63×28 track while forwarding one logical change to the native UISwitch; programmatic updates, disabled state, reparenting and restoration are handled by the integration code. No previous skin implementation is included in this source tree.
+Only the original Theseus switch is used. Its dimensions, materials, colours and animation/physics defaults are unmodified. A sibling overlay keeps its original 63×28 track while forwarding one logical change to the native UISwitch; programmatic updates, disabled state, reparenting and restoration are handled by the integration code. The Glassify switch replacement and selection preference are removed; its archived original source is not compiled into the product.
 
 The Dock integration replaces only its background. Icons, placement, launches and dragging remain system-owned. The Theseus surface uses `.clear` with container geometry adapted to the system background; Glassify uses its original Clear plus `secondarySystemFillColor`, the background configuration of Prominent Clear. No tab labels or selection lens is added. Both engine source sets and their separate original Metal libraries live in the same package resource bundle.
+
+The wallpaper adapter captures only a separate wallpaper subtree through UIKit hierarchy drawing, feeds the bitmap to the unmodified engines and refuses transparent/near-black frames. Dock icons and the glass itself are never part of this capture. A valid wallpaper frame and rendered output are required before hiding the native background. If a wallpaper cannot be captured, the system background remains visible. This path requires physical-device verification; it is not proof that every render-server wallpaper can be read.
 
 Pinned originals:
 
@@ -22,10 +23,10 @@ All 89 original distribution files are checked against `Vendor/manifest.json`. S
 
 ## Build and verification
 
-Use the manual **Native GlassSwitchDock** GitHub Actions workflow. macOS/Xcode compiles the actual Swift, Objective-C++, C++ and Metal code and runs the UIKit simulator harness. Default delivery includes ordinary arm64 rootless and real arm64e RootHide, each with exactly one deb. Install only the variant matching your jailbreak.
+Use the manual **Native GlassSwitchDock** GitHub Actions workflow. macOS/Xcode compiles the actual Swift, Objective-C++, C++ and Metal code and runs the UIKit simulator harness. The workflow builds and delivers only real arm64e RootHide, with one deb.
 
 Portable checks: `make check`, `make infra-check`, `python3 tools/test-local.py`.
-Native checks: `make smoke`, `bash tools/run-ci-simulator.sh`, `make build ARCH=all`, `make verify`.
+Native checks: `make smoke`, `bash tools/run-ci-simulator.sh`, `make build ARCH=arm64e`, `make verify`.
 
 Final debs are re-extracted and checked for exact installation layout, entry/resource uniqueness, original Metal output, actual CPU subtype, dependency binding, hashes and strict native signatures. The installer does not respring or terminate processes.
 

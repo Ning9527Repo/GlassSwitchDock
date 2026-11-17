@@ -10,7 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PINNED = {'Theseus':'71ca1c127a4e7fe3387361f160c4890dbd427f66',
           'Glassify':'a8e52aa9c015502fb68d5f81687698f11df6977d'}
-KEYS = {'enabledSwitch','switchStyle','enabledDock','dockStyle'}
+KEYS = {'enabledSwitch','enabledDock','dockStyle'}
 
 def text(path): return (ROOT/path).read_text()
 def specs():
@@ -34,9 +34,9 @@ class Structure(unittest.TestCase):
         self.assertEqual(len(list((ROOT/'Vendor/Theseus/Sources').rglob('*.metal'))),1)
         self.assertEqual(len(list((ROOT/'Vendor/Glassify/Sources/Glassify/Core').glob('*.cpp'))),4)
         self.assertEqual(len(list((ROOT/'Vendor/Glassify/Sources/Glassify/Platform').glob('*.mm'))),16)
-    def test_exactly_four_settings_one_domain(self):
+    def test_exactly_three_settings_one_domain(self):
         values=[s for s in specs() if s.get('key')]
-        self.assertEqual(len(values),4); self.assertEqual({s['key'] for s in values},KEYS)
+        self.assertEqual(len(values),3); self.assertEqual({s['key'] for s in values},KEYS)
         self.assertEqual({s['defaults'] for s in values},{'com.ning.glassswitchdock'})
         for spec in values:
             with self.subTest(key=spec['key']):
@@ -59,7 +59,8 @@ class Structure(unittest.TestCase):
         core='\n'.join(p.read_text() for p in (ROOT/'src').glob('*') if p.suffix in {'.m','.mm','.swift','.h'})
         self.assertNotRegex(core,r'glassStyle\s*=\s*\.iOS26|iosVersionOverride\s*=|tierOverride\s*=|refractionQualityOverride\s*=')
         self.assertNotRegex(core,r'UIFont|setFont:|\.font\s*=|\bappearance\s*\]|UIAppearance|DNToggleView|daynight')
-        self.assertIn('GLSSwitch',text('src/NGSwitch.m'))
+        self.assertNotIn('GLSSwitch',text('src/NGSwitch.m'))
+        self.assertNotIn('NGSwitchStyle',text('src/Bridge.h'))
     def test_material_defaults_and_no_demo_controls(self):
         dock=text('src/NGDock.mm')
         self.assertIn('GLSGlassStyleClear',dock); self.assertIn('UIColor.secondarySystemFillColor',dock)
@@ -81,7 +82,7 @@ class Structure(unittest.TestCase):
         probe=text('tests/Harness/NGTheseusProbe.swift'); fixture=text('tests/Harness/NGHarness.m')
         for value in ('control.accessibilityActivate()','control.scriptedTouchBegan','control.scriptedTouchMoved','control.scriptedTouchEnded','glass.captureSnapshot'):
             self.assertIn(value,probe)
-        for value in ('beginTrackingWithTouch','continueTrackingWithTouch','endTrackingWithTouch','NGStorePreference'):
+        for value in ('NGStorePreference',):
             self.assertIn(value,fixture)
         self.assertNotRegex(probe+fixture,r'\.onChanged\?\(|setOnChanged:|onValueChanged\?\(')
         for name in ('main.m','NGSwitchTests.m','NGDockTests.m','NGResourceTests.m','NGTheseusProbe.swift'):

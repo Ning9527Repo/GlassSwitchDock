@@ -57,7 +57,7 @@ NSDictionary *NGReadPreferences(void) {
         if (data && (!latest || [date compare:latest] != NSOrderedAscending)) { current = data; latest = date; }
     }
     NSMutableDictionary *result = [current mutableCopy];
-    for (NSString *key in @[@"enabledSwitch",@"switchStyle",@"enabledDock",@"dockStyle"]) {
+    for (NSString *key in @[@"enabledSwitch",@"enabledDock",@"dockStyle"]) {
         if (result[key]) continue;
         id value = CFBridgingRelease(CFPreferencesCopyAppValue((__bridge CFStringRef)key,(__bridge CFStringRef)kNGDomain));
         if (value) result[key] = value;
@@ -66,7 +66,7 @@ NSDictionary *NGReadPreferences(void) {
 }
 
 BOOL NGStorePreference(NSString *key, id value) {
-    if (![@[@"enabledSwitch",@"switchStyle",@"enabledDock",@"dockStyle"] containsObject:key] || ![value isKindOfClass:NSNumber.class]) return NO;
+    if (![@[@"enabledSwitch",@"enabledDock",@"dockStyle"] containsObject:key] || ![value isKindOfClass:NSNumber.class]) return NO;
     NSMutableDictionary *data = [NGReadPreferences() mutableCopy]; data[key] = value;
     CFPreferencesSetAppValue((__bridge CFStringRef)key,(__bridge CFPropertyListRef)value,(__bridge CFStringRef)kNGDomain);
     BOOL saved = CFPreferencesAppSynchronize((__bridge CFStringRef)kNGDomain);

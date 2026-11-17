@@ -47,17 +47,12 @@ jobs:
         if: ${{ !cancelled() && inputs.simulator && steps.smoke.outcome == 'success' }}
         continue-on-error: true
         run: bash tools/run-ci-simulator.sh
-      - name: Build rootless arm64 package
-        id: arm64
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' && steps.source.outcome == 'success' }}
-        continue-on-error: true
-        run: make build ARCH=arm64
       - name: Build real arm64e RootHide package
         id: arm64e
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && steps.source.outcome == 'success' }}
         continue-on-error: true
         run: make build ARCH=arm64e
-      - name: Re-extract both final packages and verify native strict signatures
+      - name: Re-extract final RootHide package and verify native strict signatures
         id: verify
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && steps.source.outcome == 'success' }}
         continue-on-error: true
@@ -69,7 +64,6 @@ jobs:
           SETUP_RESULT: ${{ steps.setup.outcome }}
           SOURCE_RESULT: ${{ steps.source.outcome }}
           INFRA_RESULT: ${{ steps.infra.outcome }}
-          ARM64_RESULT: ${{ steps.arm64.outcome }}
           ARM64E_RESULT: ${{ steps.arm64e.outcome }}
           VERIFY_RESULT: ${{ steps.verify.outcome }}
           SMOKE_RESULT: ${{ steps.smoke.outcome }}
@@ -90,6 +84,6 @@ jobs:
             dist/SHA256SUMS
             evidence/**
             tests/evidence/**
-      - name: Require both packages and requested simulator verification
+      - name: Require RootHide package and requested simulator verification
         if: ${{ always() }}
         run: python3 tools/ci-result.py --gate

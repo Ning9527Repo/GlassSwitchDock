@@ -279,7 +279,7 @@ class Build:
         control.update({'Package': CONFIG['package'], 'Name': CONFIG['name'], 'Version': CONFIG['version'],
                         'Architecture': variant['architecture'], 'Author': CONFIG['author'],
                         'Maintainer': CONFIG.get('maintainer', 'Ning'), 'Section': 'Tweaks', 'Depends': variant['depends'],
-                        'Description': 'Original Theseus and Glassify switches and clear Dock glass in one tweak.',
+                        'Description': 'Original Theseus switch and clear Dock glass in one tweak.',
                         'Homepage': CONFIG['repository'], 'Icon': 'file:///'+(variant['prefix']+'/' if variant['prefix'] else '')+
                         'usr/share/icons/'+CONFIG['package']+'.png'})
         (stage/'DEBIAN/control').write_text(''.join(k+': '+v+'\n' for k, v in control.items()))
@@ -323,7 +323,7 @@ class Build:
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--arch', choices=['arm64','arm64e','all'], default='all')
+    p.add_argument('--arch', choices=['arm64','arm64e','all'], default='arm64e')
     p.add_argument('--smoke', action='store_true')
     p.add_argument('--harness', action='store_true')
     args = p.parse_args()

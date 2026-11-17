@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = json.loads((ROOT / 'packaging/config.json').read_text())
-KEYS = {'enabledSwitch', 'switchStyle', 'enabledDock', 'dockStyle'}
+KEYS = {'enabledSwitch', 'enabledDock', 'dockStyle'}
 PREF_NAME = re.compile(r'PrefsController|PreferencesController|RootListController', re.I)
 LEGACY = re.compile(r'DNToggleView|daynight|\bsun\b|\bmoon\b', re.I)
 
@@ -44,7 +44,7 @@ def discover():
         'swift': swift + [ROOT / 'src/TheseusBridge.swift', ROOT / 'src/TheseusBundle.swift'],
         'core': core,
         'cpp': sorted((gsrc / 'Core').rglob('*.cpp')),
-        'platform': sorted((gsrc / 'Platform').rglob('*.mm')),
+        'platform': sorted(p for p in (gsrc / 'Platform').rglob('*.mm') if p.name != 'GLSSwitch.mm'),
         'prefs': sorted(prefs),
         'theseus_metal': sorted(theseus.glob('Sources/**/*.metal')),
         'glassify_metal': sorted(gsrc.glob('Shaders/**/*.metal')),
@@ -95,13 +95,13 @@ def specifiers(path):
     doc = plistlib.loads(Path(path).read_bytes())
     values = doc if isinstance(doc, list) else doc.get('items', doc.get('PreferenceSpecifiers', []))
     specs = [v for v in values if isinstance(v, dict) and v.get('key')]
-    if len(specs) != 4 or {v['key'] for v in specs} != KEYS:
-        raise ValueError('Root.plist must have exactly four persisted keys: ' + ', '.join(sorted(KEYS)))
+    if len(specs) != 3 or {v['key'] for v in specs} != KEYS:
+        raise ValueError('Root.plist must have exactly three persisted keys: ' + ', '.join(sorted(KEYS)))
     for v in specs:
         key = v['key']
         if v.get('defaults') != CONFIG['package']:
             raise ValueError('Wrong preferences domain for ' + key)
-        if key in ('switchStyle', 'dockStyle'):
+        if key == 'dockStyle':
             if v.get('validValues', v.get('values')) != [0, 1] or v.get('cell') not in ('PSSegmentCell', 'PSLinkListCell'):
                 raise ValueError('Style specifier must enumerate 0/1: ' + key)
         elif v.get('cell') != 'PSSwitchCell':

@@ -1,8 +1,8 @@
 Package: com.ning.glassswitchdock
 Name: GlassSwitchDock
-Version: 0.1.0
+Version: 0.1.1
 Architecture: iphoneos-arm64e
-Description: Original Theseus and Glassify switches with a clear desktop Dock glass background.
+Description: Original Theseus switch with a clear desktop Dock glass background.
 Depends: mobilesubstrate, firmware (>= 15.0), preferenceloader
 Conflicts: com.ning.switch, com.ning.daynightswitch
 Replaces: com.ning.switch, com.ning.daynightswitch

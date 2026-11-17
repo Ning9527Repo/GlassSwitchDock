@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Re-verify both final packages independently of build/staging; fail if either absent."""
+"""Re-verify requested final packages independently of build/staging."""
 import json
 from pathlib import Path
 import sys
@@ -8,7 +8,8 @@ from verify import verify
 
 result, failed = [], False
 out = ROOT/'evidence/final'; out.mkdir(parents=True, exist_ok=True)
-for arch, variant in CONFIG['variants'].items():
+for arch in (sys.argv[1:] or ['arm64e']):
+    variant = CONFIG['variants'][arch]
     name = f'{CONFIG["package"]}_{CONFIG["version"]}_{variant["architecture"]}.deb'
     try:
         item = verify(ROOT/'dist'/name, arch, native=True)

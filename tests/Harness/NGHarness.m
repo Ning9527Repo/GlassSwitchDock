@@ -101,7 +101,7 @@ static BOOL NGTheseusClass(UIView *view, NSString *name) {
 NSArray<UIView *> *NGOriginalSwitches(UIView *root) {
     NSMutableArray *result = [NSMutableArray array];
     for (UIView *view in NGDescendants(root))
-        if (NGTheseusClass(view, @"TheseusSwitch") || [view isKindOfClass:GLSSwitch.class]) [result addObject:view];
+        if (NGTheseusClass(view, @"TheseusSwitch")) [result addObject:view];
     return result;
 }
 UIView *NGSwitchComponent(UISwitch *source, UIView *scope, NSInteger style) {
@@ -125,9 +125,9 @@ BOOL NGReadOn(id control) {
     SEL getter = [control respondsToSelector:@selector(isOn)] ? @selector(isOn) : NSSelectorFromString(@"on");
     return control && [control respondsToSelector:getter] ? ((BOOL (*)(id, SEL))objc_msgSend)(control, getter) : NO;
 }
-void NGWritePreferences(BOOL enabledSwitch, NSInteger switchStyle, BOOL enabledDock, NSInteger dockStyle) {
+void NGWritePreferences(BOOL enabledSwitch, BOOL enabledDock, NSInteger dockStyle) {
     NSString *domain = NSProcessInfo.processInfo.environment[@"NG_TEST_PREFS_DOMAIN"] ?: @"com.ning.glassswitchdock";
-    NSDictionary *values = @{@"enabledSwitch": @(enabledSwitch), @"switchStyle": @(switchStyle),
+    NSDictionary *values = @{@"enabledSwitch": @(enabledSwitch),
                              @"enabledDock": @(enabledDock), @"dockStyle": @(dockStyle)};
     (void)domain;
     for (NSString *key in values) {
@@ -138,34 +138,6 @@ void NGWritePreferences(BOOL enabledSwitch, NSInteger switchStyle, BOOL enabledD
     NGPump(0.04);
 }
 
-// UITouch's public tracking contract is enough for the original GLSSwitch.
-// No ivars or original source bytes are patched; UIKit tracking methods are called.
-@interface NGTrackingTouch : UITouch
-@property(nonatomic) CGPoint fixturePoint;
-@property(nonatomic, weak) UIView *fixtureView;
-@end
-@implementation NGTrackingTouch
-- (CGPoint)locationInView:(UIView *)view { return [_fixtureView convertPoint:_fixturePoint toView:view]; }
-- (CGPoint)previousLocationInView:(UIView *)view { return [self locationInView:view]; }
-- (UIView *)view { return _fixtureView; }
-- (UITouchPhase)phase { return UITouchPhaseMoved; }
-- (NSTimeInterval)timestamp { return CACurrentMediaTime(); }
-@end
-BOOL NGGlassifyUserInteraction(GLSSwitch *control, BOOL drag, BOOL targetOn) {
-    if (!control || !control.enabled || !control.userInteractionEnabled) return NO;
-    NGTrackingTouch *touch = [NGTrackingTouch new]; touch.fixtureView = control;
-    touch.fixturePoint = CGPointMake(control.on ? 43 : 20, 14);
-    if (![control beginTrackingWithTouch:touch withEvent:nil]) return NO;
-    NGPump(0.045); // original minimum press is 0.01, run-loop initiated beginPress
-    if (drag) {
-        touch.fixturePoint = CGPointMake(targetOn ? 62 : 1, 14);
-        [control continueTrackingWithTouch:touch withEvent:nil];
-        [control continueTrackingWithTouch:touch withEvent:nil];
-    }
-    [control endTrackingWithTouch:touch withEvent:nil];
-    NGPump(0.05);
-    return YES;
-}
 void NGRefreshFixtureDock(UIView *dock) {
     NGRefreshDock(dock);
     NGRefreshDocks();

@@ -1,5 +1,6 @@
 #import "NGHarness.h"
 #import <objc/message.h>
+#import "NGWallpaperBackdrop.h"
 
 static UIView *NGMaterial(UIView *root, NSInteger style) {
     for (UIView *view in NGDescendants(root)) {
@@ -33,7 +34,7 @@ static NSDictionary *NGFrame(UIView *material, NSInteger style, NSString *path) 
     uint64_t hash = 14695981039346656037ULL; const uint8_t *bytes = buffer.contents;
     for (NSUInteger y = 0; y < texture.height; y++) for (NSUInteger x = 0; x < texture.width*4; x++) hash = (hash ^ bytes[y*row+x])*1099511628211ULL;
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
-    CGBitmapInfo bitmap = texture.pixelFormat == MTLPixelFormatBGRA8Unorm ? kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst : kCGImageAlphaPremultipliedLast;
+    CGBitmapInfo bitmap = texture.pixelFormat == MTLPixelFormatBGRA8Unorm ? kCGBitmapByteOrder32Little | (CGBitmapInfo)kCGImageAlphaPremultipliedFirst : (CGBitmapInfo)kCGImageAlphaPremultipliedLast;
     CGContextRef context = CGBitmapContextCreate(buffer.contents,texture.width,texture.height,8,row,space,bitmap);
     CGImageRef image = context ? CGBitmapContextCreateImage(context) : nil;
     NSData *png = image ? UIImagePNGRepresentation([UIImage imageWithCGImage:image]) : nil;
@@ -45,19 +46,10 @@ static NSDictionary *NGFrame(UIView *material, NSInteger style, NSString *path) 
 static NSString *NGDockID(Class cls, NSInteger style, NSString *name) {
     return [NSString stringWithFormat:@"dock.%@.%@.%@", NSStringFromClass(cls), style == 0 ? @"theseusClear" : @"glassifyProminentClear", name];
 }
-void NGRunDockTests(NGRecorder *r, UIView *root) {
-    for (Class cls in @[SBDockView.class, SBFloatingDockPlatterView.class]) {
-        NGPatternView *pattern = [[NGPatternView alloc] initWithFrame:CGRectMake(10, 350, root.bounds.size.width-20, 120)];
-        [root addSubview:pattern];
-        SBDockView *dock = [[cls alloc] initWithFrame:CGRectMake(5, 16, pattern.bounds.size.width-10, 84)];
-        [pattern addSubview:dock];
-        CGFloat alpha = dock.backgroundView.alpha; BOOL interaction = dock.backgroundView.userInteractionEnabled;
-        for (NSInteger style = 0; style <= 1; style++) {
-            NGWritePreferences(NO, 0, YES, style); NGRefreshFixtureDock(dock); NGPump(0.6); NGRefreshFixtureDock(dock);
-            UIView *material = NGMaterial(dock, style);
+static void NGCheckDockOptics(NGRecorder *r, SBDockView *dock, Class cls, NSInteger style, UIView *material) {
             [r check:material && NGMaterialCount(dock) == 1 name:NGDockID(cls,style,@"actual_original_material")
                evidence:@{@"class": material ? NSStringFromClass(material.class) : @"missing", @"count": @(NGMaterialCount(dock))}];
-            if (!material) continue;
+            if (!material) return;
             if (style == 0) {
                 NSDictionary *config = [NGTheseusProbe inspectClear:material];
                 [r check:[config[@"matchesOriginalClear"] boolValue] && [config[@"captureMethod"] isEqual:config[@"captureBackendExpected"]]
@@ -78,10 +70,6 @@ void NGRunDockTests(NGRecorder *r, UIView *root) {
                        name:NGDockID(cls,style,@"exact_prominent_clear_config")
                    evidence:@{@"style": @(glass.style), @"tint": actual.description ?: @"nil", @"expectedTint": expected.description,
                               @"frost": @(glass.frost), @"interactive": @(glass.interactive), @"blurLodBias": @(glass.blurLodBias)}];
-                // Observe the original surface's completed GPU output without altering its optical parameters.
-                id surface = ((id(*)(id,SEL))objc_msgSend)(glass,NSSelectorFromString(@"gls_surface"));
-                ((void(*)(id,SEL,BOOL))objc_msgSend)(surface,NSSelectorFromString(@"setKeepsOutput:"),YES);
-                [glass setNeedsBackdropUpdate]; NGPump(0.3);
             }
             BOOL noContent = ![material isKindOfClass:UIControl.class];
             for (UIView *view in NGDescendants(material))
@@ -94,25 +82,89 @@ void NGRunDockTests(NGRecorder *r, UIView *root) {
             UIView *hit = [dock hitTest:[dock.icon convertPoint:CGPointMake(26,26) toView:dock] withEvent:nil];
             [r check:hit == dock.icon || [hit isDescendantOfView:dock.icon] name:NGDockID(cls,style,@"dock_icon_hit_test_preserved")
                evidence:@{@"hitClass": hit ? NSStringFromClass(hit.class) : @"nil"}];
-            NSString *firstName = [NGDockID(cls,style,@"gpu_a") stringByAppendingPathExtension:@"png"];
-            NSDictionary *first = NGFrame(material,style,[r.output stringByAppendingPathComponent:firstName]);
-            pattern.phase++; [pattern setNeedsDisplay]; [pattern layoutIfNeeded]; [CATransaction flush]; NGPump(0.08);
-            if (style == 0) [(id<NGGlassComponent>)material invalidateBackdrop];
-            else [(GLSGlassView *)material setNeedsBackdropUpdate];
-            NGPump(0.4);
-            NSString *secondName = [NGDockID(cls,style,@"gpu_b") stringByAppendingPathExtension:@"png"];
-            NSDictionary *second = NGFrame(material,style,[r.output stringByAppendingPathComponent:secondName]);
-            [r check:[first[@"ready"] boolValue] && [second[@"ready"] boolValue] && [first[@"wrotePNG"] boolValue] && [second[@"wrotePNG"] boolValue] &&
-                     ![first[@"checksum"] isEqual:second[@"checksum"]]
-                   name:NGDockID(cls,style,@"backdrop_change_changes_real_gpu_pixels") evidence:@{@"before": first,@"after": second,@"files": @[firstName,secondName]}];
-            [r capture:root name:NGDockID(cls,style,@"render")];
-            for (NSUInteger i=0;i<8;i++) NGRefreshFixtureDock(dock);
-            [r check:NGMaterialCount(dock) == 1 name:NGDockID(cls,style,@"refresh_idempotent") evidence:@{@"count": @(NGMaterialCount(dock))}];
-        }
-        NGWritePreferences(NO,0,NO,0); NGRefreshFixtureDock(dock); NGPump(0.05);
-        [r check:NGMaterialCount(dock)==0 && fabs(dock.backgroundView.alpha-alpha)<0.001 && dock.backgroundView.userInteractionEnabled==interaction
-               name:[NSString stringWithFormat:@"dock.%@.disable_restores_background",NSStringFromClass(cls)]
-           evidence:@{@"count": @(NGMaterialCount(dock)),@"alpha": @(dock.backgroundView.alpha),@"interaction": @(dock.backgroundView.userInteractionEnabled)}];
-        NGRemoveDock(dock); [pattern removeFromSuperview];
-    }
+}
+
+// Simulates a wallpaper drawn by the render server: layer.render alone is blank,
+// while the normal on-screen hierarchy has the pattern backing contents.
+@interface NGServerWallpaperLayer : CALayer
+@end
+@implementation NGServerWallpaperLayer
+- (void)renderInContext:(CGContextRef)context { }
+@end
+@interface NGFixtureWallpaperView : NGPatternView
+@end
+@implementation NGFixtureWallpaperView
++ (Class)layerClass { return NGServerWallpaperLayer.class; }
+@end
+
+static void NGAfter(NSTimeInterval seconds, dispatch_block_t action) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(seconds*NSEC_PER_SEC)),dispatch_get_main_queue(),action);
+}
+static void NGRunDockCase(NGRecorder *r, UIView *root, NSUInteger index, dispatch_block_t completion) {
+    if (index>=4) { completion(); return; }
+    Class cls=index<2 ? SBDockView.class : SBFloatingDockPlatterView.class;
+    NSInteger style=index%2;
+    NGFixtureWallpaperView *wallpaper=[[NGFixtureWallpaperView alloc] initWithFrame:root.bounds];
+    wallpaper.userInteractionEnabled=NO; wallpaper.opaque=YES;
+    [root insertSubview:wallpaper atIndex:0]; [wallpaper setNeedsDisplay];
+    SBDockView *dock=[[cls alloc] initWithFrame:CGRectMake(15,366,root.bounds.size.width-30,84)];
+    [root addSubview:dock];
+    CGFloat alpha=dock.backgroundView.alpha; BOOL interaction=dock.backgroundView.userInteractionEnabled;
+    NGWritePreferences(NO,YES,style);
+    NGAfter(0.15, ^{
+        NGRefreshFixtureDock(dock);
+        NGAfter(0.9, ^{
+            UIView *material=NGMaterial(dock,style);
+            NGCheckDockOptics(r,dock,cls,style,material);
+            NGWallpaperBackdrop *capture=nil;
+            for (UIView *v in NGDescendants(dock)) if ([v isKindOfClass:NGWallpaperBackdrop.class]) capture=(id)v;
+            [r check:capture.hasFrame && [capture.diagnostics[@"valid"] boolValue]
+                 name:NGDockID(cls,style,@"wallpaper_only_valid_frame") evidence:capture.diagnostics];
+            // Prove that this wallpaper cannot be obtained through layer.render.
+            UIGraphicsImageRenderer *renderer=[[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(16,16)];
+            UIImage *empty=[renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+                [wallpaper.layer renderInContext:ctx.CGContext];
+            }];
+            [r check:empty!=nil && [wallpaper.layer isKindOfClass:NGServerWallpaperLayer.class]
+                 name:NGDockID(cls,style,@"server_wallpaper_fixture") evidence:@{@"layerClass":NSStringFromClass(wallpaper.layer.class)}];
+            NSString *firstName=[NGDockID(cls,style,@"gpu_a") stringByAppendingPathExtension:@"png"];
+            NSDictionary *first=NGFrame(material,style,[r.output stringByAppendingPathComponent:firstName]);
+            NSDictionary *firstCapture=[capture.diagnostics copy];
+            wallpaper.phase++; [wallpaper setNeedsDisplay];
+            NGAfter(0.15, ^{
+                NGRefreshFixtureDock(dock);
+                NGAfter(0.9, ^{
+                    NSString *secondName=[NGDockID(cls,style,@"gpu_b") stringByAppendingPathExtension:@"png"];
+                    NSDictionary *second=NGFrame(material,style,[r.output stringByAppendingPathComponent:secondName]);
+                    BOOL pixels=[first[@"ready"] boolValue] && [second[@"ready"] boolValue] &&
+                        [first[@"wrotePNG"] boolValue] && [second[@"wrotePNG"] boolValue] &&
+                        ![first[@"checksum"] isEqual:second[@"checksum"]];
+                    [r check:pixels name:NGDockID(cls,style,@"backdrop_change_changes_real_gpu_pixels")
+                         evidence:@{@"before":first,@"after":second,@"files":@[firstName,secondName],
+                                    @"wallpaperBefore":firstCapture ?: @{},@"wallpaperAfter":capture.diagnostics ?: @{}}];
+                    [r capture:root name:NGDockID(cls,style,@"render")];
+                    for (NSUInteger i=0;i<8;i++) NGRefreshFixtureDock(dock);
+                    [r check:NGMaterialCount(dock)==1 name:NGDockID(cls,style,@"refresh_idempotent") evidence:@{@"count":@(NGMaterialCount(dock))}];
+                    wallpaper.hidden=YES;
+                    NGRefreshFixtureDock(dock);
+                    NGAfter(0.1, ^{
+                        [r check:fabs(dock.backgroundView.alpha-alpha)<0.001 && material.alpha==0
+                             name:NGDockID(cls,style,@"invalid_wallpaper_retains_native_background")
+                             evidence:@{@"backgroundAlpha":@(dock.backgroundView.alpha),@"glassAlpha":@(material.alpha),
+                                        @"capture":capture.diagnostics ?: @{}}];
+                        NGWritePreferences(NO,NO,0); NGRefreshFixtureDock(dock);
+                        if (style==1) [r check:NGMaterialCount(dock)==0 && fabs(dock.backgroundView.alpha-alpha)<0.001 &&
+                            dock.backgroundView.userInteractionEnabled==interaction
+                            name:[NSString stringWithFormat:@"dock.%@.disable_restores_background",NSStringFromClass(cls)]
+                            evidence:@{@"count":@(NGMaterialCount(dock)),@"alpha":@(dock.backgroundView.alpha),@"interaction":@(dock.backgroundView.userInteractionEnabled)}];
+                        NGRemoveDock(dock); [dock removeFromSuperview]; [wallpaper removeFromSuperview];
+                        NGRunDockCase(r,root,index+1,completion);
+                    });
+                });
+            });
+        });
+    });
+}
+void NGRunDockTests(NGRecorder *r, UIView *root, dispatch_block_t completion) {
+    NGRunDockCase(r,root,0,completion);
 }

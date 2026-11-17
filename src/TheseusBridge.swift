@@ -49,13 +49,16 @@ final class NGClearDockView: TheseusView {
         providesCaptureSnapshot = true
         continuousUpdate = false
         isOpaque = false
-        onPresent = { [weak self] in self?.onReady?() }
+        snapshotDidUpdate = { [weak self] in
+            guard let self = self, self.captureSnapshot != nil else { return }
+            self.onReady?()
+        }
     }
     required init?(coder: NSCoder) { return nil }
 
     @objc(configureWithRadius:source:excluded:)
     func configure(radius: CGFloat, source: UIView, excluded: [UIView]) {
-        sourceView = source
+        if sourceView !== source { sourceView = source }
         setCaptureExcludedViews(excluded)
         if radius != lastRadius || lastSize != bounds.size {
             lastRadius = radius
@@ -78,8 +81,10 @@ final class NGClearDockView: TheseusView {
     @objc(invalidateBackdrop) func invalidateBackdrop() { invalidateBackground() }
     @objc(setRenderingActive:) func setRenderingActive(_ value: Bool) {
         active = value
-        if value && window != nil { resumeRendering(); invalidateBackground() }
-        else { pauseRendering() }
+        if value && window != nil {
+            if !isRendering { resumeRendering() }
+            invalidateBackground()
+        } else { pauseRendering() }
     }
     override func didMoveToWindow() {
         super.didMoveToWindow()

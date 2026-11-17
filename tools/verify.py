@@ -208,6 +208,8 @@ def verify(path, arch, native=True):
             require(ROOT_HIDE in item['dependencies'] if arch == 'arm64e' else ROOT_HIDE not in item['dependencies'],
                     'RootHide runtime dependency mismatch '+name)
             if name == main:
+                require(b'GLSSwitch\x00' not in files[name], 'Removed Glassify switch still compiled into product')
+                require(b'NGWallpaperBackdrop\x00' in files[name], 'Wallpaper capture integration missing')
                 require(item['install_name'] == '@rpath/GlassSwitchDock.dylib', 'Wrong main install name')
                 require(any('libswiftCore.dylib' in p for p in item['dependencies']), 'Main must link actual Swift runtime')
                 for framework in CONFIG['frameworks']:
@@ -233,7 +235,7 @@ def verify(path, arch, native=True):
             details.append(item)
     return {'status': 'passed' if native else 'structural_only', 'package': Path(path).name, 'sha256': sha256(path),
             'bytes': Path(path).stat().st_size, 'variant': arch, 'control': control, 'mach_o': details,
-            'members': members, 'control_members': control_members, 'preference_keys': sorted(['enabledSwitch','switchStyle','enabledDock','dockStyle'])}
+            'members': members, 'control_members': control_members, 'preference_keys': sorted(['enabledSwitch','enabledDock','dockStyle'])}
 
 
 if __name__ == '__main__':
